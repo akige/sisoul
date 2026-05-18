@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sisoul.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/SISOUL_USER/.sisoul/venv/bin/sisoul</string>
+        <string>daemon</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>9876</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/SISOUL_USER/.sisoul</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/SISOUL_USER/Library/Logs/sisoul-daemon.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/SISOUL_USER/Library/Logs/sisoul-daemon.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/SISOUL_USER</string>
+        <key>PATH</key>
+        <string>/Users/SISOUL_USER/.sisoul/venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+</dict>
+</plist>
