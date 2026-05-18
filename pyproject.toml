@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sisoul"
+version = "1.0.0+internal"
+description = "Decentralized meta-layer protocol for AI workflow (vault + identity + portability + audit + P2P friend sharing). Internal dev, not published."
+authors = [{ name = "sisoul-internal" }]
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "typer>=0.12.0",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "pynacl>=1.5",
+    "python-frontmatter>=1.0",
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "pytest-asyncio>=0.23",  # 波 4 dev-A (P2P async tests)
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+daemon = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+llm = [
+    "anthropic>=0.30",
+    "openai>=1.30",
+    "google-generativeai>=0.5",
+    "ollama>=0.2",
+]
+crypto = [
+    "pynacl>=1.5",
+    "mnemonic>=0.20",
+    # W21-W22 dev-B (DID + ENS subdomain + Privy social recovery)
+    "web3>=6.0",
+    "eth-account>=0.10",
+    "eth-utils>=4.0",
+]
+# Phase 3 W41-W43 onchain (EAS + Arweave snapshot)
+# dev-B 集成时 merge web3 / eas-sdk-py (dev-B 已在 crypto group 装过, 此处复列方便单装 onchain)
+onchain = [
+    "web3>=6.0",                     # dev-B 已加 (crypto group 复列, 单装 onchain 也能用)
+    "arweave-python-client>=1.0",    # dev-C (W41-W43) · 真上链 optional, 不装 fallback fake tx_id
+    # dev-B W37-W40 (EAS attestation queue, Optimism Sepolia testnet, batched 10/批)
+    "eth-account>=0.10",             # sign batch tx (Phase 5 真发 tx 时用; 本 wave readonly)
+    "eth-abi>=5.0",                  # encode attestation data 按 EAS schema (本 wave 用 JSON 占位)
+    # "eas-sdk-py>=0.1",             # 官方 Python SDK 尚未 release, 自写 tx 构造已就绪
+]
+# Phase 3 W31-W36 · 波 4 dev-A (跨设备 libp2p P2P sync + WebRTC fallback)
+# 注: py-libp2p (PyPI 名 'libp2p') 当前 protobuf 6.x gencode vs 5.x runtime 不兼容,
+#     import 即 raise. transport.py 自动 fallback aiortc WebRTC. 装失败不 block (optional group).
+# TODO: libp2p 库 protobuf 兼容修复后 transport.LibP2PTransport.send/recv 走真路径.
+p2p = [
+    "aiortc>=1.6",         # WebRTC fallback (实测主路径, aiortc==1.14 ok)
+    "zeroconf>=0.130",     # mDNS local network discovery
+    # "libp2p>=0.2",       # py-libp2p; 当前 protobuf 冲突, disabled. transport.py 自动 fallback aiortc.
+]
+
+[project.scripts]
+sisoul = "sisoul.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sisoul"]
+
+[tool.pytest.ini_options]
+# 波 7 dev-A bug-3 修复: testpaths 加 "qa", 默认 `pytest` 自动跑 tests + qa.
+# qa-D/qa-E/qa-C 三波报告均反映: CI / 主集成不知 qa 在哪导致漏跑.
+testpaths = ["tests", "qa"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false

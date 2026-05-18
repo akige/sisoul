@@ -1,0 +1,25 @@
+[Unit]
+Description=sisoul daemon — decentralized meta-layer protocol for AI workflow
+Documentation=https://github.com/sisoul-protocol/sisoul
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.sisoul/venv/bin/sisoul daemon --host 127.0.0.1 --port 9876
+WorkingDirectory=%h/.sisoul
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sisoul-daemon
+
+# 资源限制 (防 daemon 失控)
+MemoryMax=256M
+CPUQuota=20%
+
+# 环境变量 (必要时在 ~/.config/sisoul/env 里追加)
+EnvironmentFile=-%h/.config/sisoul/env
+
+[Install]
+WantedBy=default.target
