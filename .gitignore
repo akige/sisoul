@@ -25,3 +25,13 @@ dist/
 # sisoul runtime data (内测期本地 vault, 不进 git)
 ~/.sisoul/
 .sisoul-runtime/
+
+# Wave A #11 release artifacts (cosign test private key 永远不进 git;
+# binary + bundle 由 CI 上 GitHub release, 不在仓库里)
+ops/release/.testkeys/
+ops/release/.testkeys/*
+cosign.key
+cosign.key.test
+ops/release/dist/
+ops/release/.pyinstaller-build/
+ops/release/.pyinstaller-build.log
