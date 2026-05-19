@@ -582,17 +582,21 @@ class TestArweaveMockOnly:
         assert tx_id is not None
         assert tx_id.startswith("mocktx-")
 
-    def test_arweave_upload_testnet_no_wallet_fake(self) -> None:
-        """testnet + 无 wallet → fake tx_id, 不连真 Arweave."""
+    def test_arweave_upload_testnet_no_wallet_returns_none(self) -> None:
+        """testnet + 无 wallet → 返 None (Wave A #5 改: 砍 fake fallback, 用 provider='mock' 替).
+
+        旧 design (波 4): 无 wallet 返 fake tx_id (内部测试). 现 design (v1.0-decentralized
+        Wave A): Bundlr/Turbo 要求 Arweave JWK wallet, 不愿提供 → 返 None + warn, 不再
+        伪造 fake tx_id (跟 Pinata-only fallback 同). 想 fake → 用 provider='mock'.
+        """
         from sisoul.onchain.arweave import ArweaveSnapshot
         snap = ArweaveSnapshot(mnemonic=None, network="testnet", arweave_wallet_path=None)
-        # 清除 env wallet
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ARWEAVE_WALLET", None)
             snap.arweave_wallet_path = None
             tx_id = snap.upload_to_arweave(b"blob data")
-        assert tx_id is not None
-        assert "fake" in tx_id or tx_id.startswith("testnet-fake-")
+        # Wave A #5 改: 无 wallet → 返 None (不再 fake). 想 fake 走 network="mock".
+        assert tx_id is None
 
     # ── IPFS pin / fetch lifecycle mock ──────────────────────────────────────
 
