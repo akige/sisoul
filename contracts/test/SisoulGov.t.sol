@@ -53,7 +53,7 @@ contract SisoulGovTest is Test {
         token.delegate(carol);
 
         // 推一秒让 checkpoint 生效
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1); vm.roll(block.number + 1);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ contract SisoulGovTest is Test {
         token.mint(dave, 100 ether);
         vm.prank(dave);
         token.delegate(dave);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1); vm.roll(block.number + 1);
         uint256 pid = _propose(dave);
         assertGt(pid, 0);
     }
@@ -158,7 +158,7 @@ contract SisoulGovTest is Test {
         uint256 pid = _propose(alice);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Pending));
         // 跳过 voting delay
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Active));
     }
 
@@ -166,7 +166,7 @@ contract SisoulGovTest is Test {
 
     function test_Vote_For_Succeeds() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1); // 1=For
         (uint256 against, uint256 forVotes, uint256 abstain) = gov.proposalVotes(pid);
@@ -177,7 +177,7 @@ contract SisoulGovTest is Test {
 
     function test_Vote_Against() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(bob);
         gov.castVote(pid, 0); // 0=Against
         (uint256 against, uint256 forVotes,) = gov.proposalVotes(pid);
@@ -187,7 +187,7 @@ contract SisoulGovTest is Test {
 
     function test_Vote_Abstain() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 2); // 2=Abstain
         (,, uint256 abstain) = gov.proposalVotes(pid);
@@ -204,7 +204,7 @@ contract SisoulGovTest is Test {
 
     function test_Vote_AfterPeriod_Reverts() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 7 days + 2);
+        vm.warp(block.timestamp + 1 days + 7 days + 2); vm.roll(block.number + 7200 * 8 + 2);
         vm.prank(alice);
         vm.expectRevert();
         gov.castVote(pid, 1);
@@ -212,7 +212,7 @@ contract SisoulGovTest is Test {
 
     function test_Vote_DoubleVote_Reverts() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(alice);
@@ -224,34 +224,34 @@ contract SisoulGovTest is Test {
 
     function test_Defeated_QuorumNotMet() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         // 仅 carol 投 (0.06%) — 远不够 4% quorum
         vm.prank(carol);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Defeated));
     }
 
     function test_Defeated_AgainstWins() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         // alice 投 For (5%, 过 quorum), bob 投 Against (5%) — for==against → Defeated (For 必须 strictly >)
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 0);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Defeated));
     }
 
     function test_Succeeded_QuorumMet_ForWins() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Succeeded));
     }
 
@@ -259,12 +259,12 @@ contract SisoulGovTest is Test {
 
     function test_Queue_Succeeded() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
 
         (
             address[] memory targets,
@@ -278,12 +278,12 @@ contract SisoulGovTest is Test {
 
     function test_Execute_AfterTimelock() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
 
         (
             address[] memory targets,
@@ -298,8 +298,10 @@ contract SisoulGovTest is Test {
         vm.warp(block.timestamp + 2 days + 1);
 
         // 转 minter role 给 timelock 才能执行 mint
+        // 用 startPrank: token.MINTER_ROLE() 先消耗 vm.prank 的话 grantRole 会变 test contract
+        bytes32 minterRole = token.MINTER_ROLE();
         vm.prank(admin);
-        token.grantRole(token.MINTER_ROLE(), address(timelock));
+        token.grantRole(minterRole, address(timelock));
 
         uint256 before = token.balanceOf(recipient);
         gov.execute(targets, values, calldatas, descHash);
@@ -309,12 +311,12 @@ contract SisoulGovTest is Test {
 
     function test_Execute_BeforeTimelock_Reverts() public {
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
 
         (
             address[] memory targets,
@@ -368,12 +370,12 @@ contract SisoulGovTest is Test {
         // OZ Governor v5 没 Expired 状态 (queue 在 timelock 内有自己的 grace period);
         // 这里测 Succeeded 状态: 长时间不 queue 仍是 Succeeded.
         uint256 pid = _propose(alice);
-        vm.warp(block.timestamp + 1 days + 1);
+        vm.warp(block.timestamp + 1 days + 1); vm.roll(block.number + 7200 + 1);
         vm.prank(alice);
         gov.castVote(pid, 1);
         vm.prank(bob);
         gov.castVote(pid, 1);
-        vm.warp(block.timestamp + 7 days + 1);
+        vm.warp(block.timestamp + 7 days + 1); vm.roll(block.number + 7200 * 7);
         // 30 天后仍 Succeeded (Governor 本身无 Expired)
         vm.warp(block.timestamp + 30 days);
         assertEq(uint256(gov.state(pid)), uint256(IGovernor.ProposalState.Succeeded));
@@ -398,11 +400,11 @@ contract SisoulGovTest is Test {
         address dave = address(0xDA);
         vm.prank(admin);
         token.mint(dave, 1000 ether);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1); vm.roll(block.number + 1);
         assertEq(token.getVotes(dave), 0);
         vm.prank(dave);
         token.delegate(dave);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1); vm.roll(block.number + 1);
         assertEq(token.getVotes(dave), 1000 ether);
     }
 }
