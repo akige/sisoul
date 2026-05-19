@@ -556,7 +556,9 @@ class ArweaveSnapshot:
 
         重试条件: status='failed' (IPFS/Arweave 上传失败).
         跳过: status='ok' (首次成功).
+        退避: base * 2^attempt 加 jitter ±20% (P1-6 #5 edge case).
         """
+        import random as _random
         import time as _time
 
         record: SnapshotRecord | None = None
@@ -566,8 +568,9 @@ class ArweaveSnapshot:
                 return record
             if attempt == max_retries - 1:
                 break
-            delay = base_delay_sec * (2 ** attempt)
-            _time.sleep(delay)
+            base = base_delay_sec * (2 ** attempt)
+            delay = base * (1.0 + _random.uniform(-0.2, 0.2))
+            _time.sleep(max(0.05, delay))
         # 全失败 — record 含 error, 调用方按 record.status 处理
         assert record is not None
         return record

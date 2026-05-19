@@ -1,21 +1,25 @@
-"""sisoul llm 模块 (Phase 1 W5-W6).
+"""sisoul llm 模块 (Phase 1 W5-W6 / Phase 2 P2-4 扩到 7).
 
-5 LLM adapter 统一入口:
+7 LLM adapter 统一入口:
 - AnthropicAdapter (claude-opus-4-7 默认)
 - OpenAIAdapter (gpt-4o 默认)
 - GeminiAdapter (gemini-2.5-pro 默认)
 - OllamaAdapter (llama3.2 默认, 本地无 key)
 - OpenRouterAdapter (openai/gpt-4o 默认)
+- GrokAdapter (grok-2-latest 默认) ← P2-4
+- DeepSeekAdapter (deepseek-chat 默认) ← P2-4
 
 工厂函数:
 - get_adapter(provider, api_key=None, model=None) → LLMAdapter
 
 provider 别名映射:
-- "claude" / "anthropic" → AnthropicAdapter
-- "openai" / "gpt"       → OpenAIAdapter
-- "gemini" / "google"    → GeminiAdapter
-- "ollama" / "local"     → OllamaAdapter
-- "openrouter"           → OpenRouterAdapter
+- "claude" / "anthropic"  → AnthropicAdapter
+- "openai" / "gpt"        → OpenAIAdapter
+- "gemini" / "google"     → GeminiAdapter
+- "ollama" / "local"      → OllamaAdapter
+- "openrouter"            → OpenRouterAdapter
+- "grok" / "xai"          → GrokAdapter
+- "deepseek" / "ds"       → DeepSeekAdapter
 """
 
 from __future__ import annotations
@@ -26,6 +30,8 @@ from sisoul.llm.openai import OpenAIAdapter
 from sisoul.llm.gemini import GeminiAdapter
 from sisoul.llm.ollama import OllamaAdapter
 from sisoul.llm.openrouter import OpenRouterAdapter
+from sisoul.llm.grok import GrokAdapter
+from sisoul.llm.deepseek import DeepSeekAdapter
 
 __all__ = [
     "LLMAdapter",
@@ -35,6 +41,8 @@ __all__ = [
     "GeminiAdapter",
     "OllamaAdapter",
     "OpenRouterAdapter",
+    "GrokAdapter",
+    "DeepSeekAdapter",
     "get_adapter",
     "PROVIDER_ALIASES",
 ]
@@ -51,6 +59,10 @@ PROVIDER_ALIASES: dict[str, type[LLMAdapter]] = {
     "ollama": OllamaAdapter,
     "local": OllamaAdapter,
     "openrouter": OpenRouterAdapter,
+    "grok": GrokAdapter,
+    "xai": GrokAdapter,
+    "deepseek": DeepSeekAdapter,
+    "ds": DeepSeekAdapter,
 }
 
 

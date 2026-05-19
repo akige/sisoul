@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -255,6 +256,57 @@ class LibP2PUnavailable(RuntimeError):
     """libp2p 库不可用 / 启动失败. select_transport 捕获后 fallback."""
 
 
+# ── STUN/TURN ICE servers 配置 (P1-6 #2) ──────────────────────────────────────
+
+
+def _default_ice_servers() -> list[dict[str, Any]]:
+    """从 env 读 ICE server 配置.
+
+    支持:
+      - ``SISOUL_STUN_URLS``  : 逗号分隔, e.g. ``stun:stun.l.google.com:19302``
+      - ``SISOUL_TURN_URL``   : 单个 TURN URL, e.g. ``turn:turn.example.com:3478``
+      - ``SISOUL_TURN_USERNAME`` + ``SISOUL_TURN_CREDENTIAL`` : Twilio NTS 等
+
+    没配 env → 默认 Google 公共 STUN (无 TURN, 受限 NAT 穿透不成功).
+    生产推荐用 Twilio NTS 或自部 coturn.
+    """
+    servers: list[dict[str, Any]] = []
+    stun_env = os.environ.get("SISOUL_STUN_URLS", "stun:stun.l.google.com:19302")
+    if stun_env:
+        for url in [u.strip() for u in stun_env.split(",") if u.strip()]:
+            servers.append({"urls": url})
+
+    turn_url = os.environ.get("SISOUL_TURN_URL")
+    if turn_url:
+        entry: dict[str, Any] = {"urls": turn_url}
+        username = os.environ.get("SISOUL_TURN_USERNAME")
+        credential = os.environ.get("SISOUL_TURN_CREDENTIAL")
+        if username:
+            entry["username"] = username
+        if credential:
+            entry["credential"] = credential
+        servers.append(entry)
+
+    return servers
+
+
+def build_rtc_configuration(ice_servers: list[dict[str, Any]] | None = None) -> Any:
+    """build aiortc RTCConfiguration from dict list. 失败返 None (aiortc 缺时)."""
+    if not AIORTC_AVAILABLE:
+        return None
+    from aiortc import RTCConfiguration, RTCIceServer  # type: ignore[import-not-found]
+
+    cfg_servers: list[Any] = []
+    for s in ice_servers or []:
+        kw: dict[str, Any] = {"urls": s["urls"]}
+        if "username" in s:
+            kw["username"] = s["username"]
+        if "credential" in s:
+            kw["credential"] = s["credential"]
+        cfg_servers.append(RTCIceServer(**kw))
+    return RTCConfiguration(iceServers=cfg_servers) if cfg_servers else RTCConfiguration()
+
+
 # ── WebRTCTransport (实际主路径, aiortc) ───────────────────────────────────────
 
 
@@ -266,12 +318,16 @@ class WebRTCTransport(Transport):
     - DataChannel binary mode, 收消息入 Queue.
     - 本 phase 用同进程 mock signaling (test_p2p_two_instance_integration); 真 NAT 穿透 Phase 4+.
 
-    真 NAT 穿透 / TURN / STUN: Phase 4 朋友共享时加.
+    真 NAT 穿透 / TURN / STUN: 通过 ``ice_servers`` 参数注入 (默认从 env 读).
     """
 
     name = "webrtc"
 
-    def __init__(self, node_label: str = "node") -> None:
+    def __init__(
+        self,
+        node_label: str = "node",
+        ice_servers: Optional[list[dict[str, Any]]] = None,
+    ) -> None:
         if not AIORTC_AVAILABLE:
             raise RuntimeError("aiortc 不可用, 装 ``uv pip install aiortc`` 后再用")
         self._label = node_label
@@ -283,6 +339,7 @@ class WebRTCTransport(Transport):
         self._channels: dict[str, Any] = {}  # peer_id → DataChannel
         self._started = False
         self._port = 0
+        self._ice_servers = ice_servers if ice_servers is not None else _default_ice_servers()
 
     async def start(self, port: int = 0) -> str:
         # 本 phase aiortc 走信令简化路径 (daemon-mediated 或测试 mock).

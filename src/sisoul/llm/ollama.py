@@ -1,15 +1,14 @@
-"""sisoul LLM adapter · Ollama 本地 (Phase 1 W6).
+"""sisoul LLM adapter · Ollama 本地.
 
 官方 ollama Python client 封装.
 默认 model: llama3.2 (最常用本地模型, 轻量).
 无 api_key (本地 daemon).
-base_url 默认 http://localhost:11434 (ollama 官方默认端口).
-
-TODO: 如果用户改了 ollama 端口, 可通过 OLLAMA_HOST env 或 base_url 参数传入.
+base_url 优先级: 显式 base_url 参数 > OLLAMA_HOST env > DEFAULT_BASE_URL.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Iterator
 
 from sisoul.llm.base import LLMAdapter, LLMAdapterError
@@ -41,7 +40,7 @@ class OllamaAdapter(LLMAdapter):
         base_url: str | None = None,
     ) -> None:
         super().__init__(api_key=None, model=model)  # ollama 无 api_key
-        self.base_url = base_url or self.DEFAULT_BASE_URL
+        self.base_url = base_url or os.environ.get("OLLAMA_HOST") or self.DEFAULT_BASE_URL
         self._client = None
 
     def _get_client(self):

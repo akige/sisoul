@@ -1,0 +1,10 @@
+{
+  "id": "sisoul",
+  "name": "Sisoul Meta-Layer",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Sisoul meta-layer integration for Obsidian. Surfaces DID, friends, skills and vault sync status from the local sisoul daemon (127.0.0.1:9876).",
+  "author": "sisoul",
+  "authorUrl": "https://sisoul.local",
+  "isDesktopOnly": true
+}

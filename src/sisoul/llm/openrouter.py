@@ -13,7 +13,7 @@ api_key: 优先 __init__ 传入, 其次读 OPENROUTER_API_KEY env.
 - meta-llama/llama-3.2-3b-instruct (免费)
 - mistralai/mistral-7b-instruct (免费)
 
-TODO: OpenRouter 支持 HTTP-Referer + X-Title header (可选, 用于 analytics).
+site_url / app_title 参数可传 HTTP-Referer + X-Title header (OpenRouter analytics, 可选).
 """
 
 from __future__ import annotations

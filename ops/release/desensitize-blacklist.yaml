@@ -1,0 +1,52 @@
+# Sisoul 脱敏黑名单
+#
+# 用法: ops/release/desensitize.py --config desensitize-blacklist.yaml --root <repo>
+#
+# 每条 pattern (Python re 兼容) 命中即 sed-style 替换为占位符. 验收阶段会跑二次 grep
+# 期望 0 命中 — 改了 pattern 之后必须保持这条性质.
+#
+# 真正的内部黑名单值用户/CI 填. 这里只给占位 + 公开可见的常见模式. 任何含真实 IP /
+# 真实账号 / 真实 API key 前缀的 entry 应该放进 .private.yaml (不 commit).
+
+patterns:
+  # 用户名 / 家目录路径
+  - { match: "<home-dir>/", replace: "/Users/USER/" }
+  - { match: "/home/as/", replace: "/home/USER/" }
+  - { match: '\bas@', replace: "user@" }            # email/git author 前缀
+
+  # 内部 vault 路径
+  - { match: "Documents/asas", replace: "obsidian-vault" }
+  - { match: "obs://asas/", replace: "obs://vault/" }
+  - { match: "<internal-notes>", replace: "obsidian-vault" }
+
+  # 机器 alias (aws / Polaris)
+  - { match: "aws-(us|hk|sg|jp)-tail", replace: "REDACTED_HOST" }
+  - { match: "polaris[0-9]+(-tail)?", replace: "REDACTED_POLARIS_HOST" }
+  - { match: "panshi-sim-(prod|stage)", replace: "REDACTED_PANSHI_HOST" }
+  - { match: "mihomo-tail", replace: "REDACTED_HOST" }
+  - { match: "dmit-(jp|us)", replace: "REDACTED_VPS" }
+  - { match: "tx-jp", replace: "REDACTED_VPS" }
+  - { match: "<test-host>", replace: "REDACTED_VPS" }
+
+  # Tailscale CGNAT 段 (100.64.0.0/10)
+  - { match: "100\\.6[4-9]\\.\\d{1,3}\\.\\d{1,3}", replace: "TAILSCALE_IP" }
+  - { match: "100\\.[7-9]\\d\\.\\d{1,3}\\.\\d{1,3}", replace: "TAILSCALE_IP" }
+  - { match: "100\\.1[0-1]\\d\\.\\d{1,3}\\.\\d{1,3}", replace: "TAILSCALE_IP" }
+  - { match: "100\\.12[0-7]\\.\\d{1,3}\\.\\d{1,3}", replace: "TAILSCALE_IP" }
+
+  # API key / token 前缀
+  - { match: "sk-ant-[A-Za-z0-9_-]{20,}", replace: "REDACTED_ANTHROPIC_KEY" }
+  - { match: "sk-[A-Za-z0-9]{20,}", replace: "REDACTED_API_KEY" }
+  - { match: "ghp_[A-Za-z0-9]{20,}", replace: "REDACTED_GH_TOKEN" }
+  - { match: "github_pat_[A-Za-z0-9_]{20,}", replace: "REDACTED_GH_PAT" }
+  - { match: "tskey-[A-Za-z0-9_-]{20,}", replace: "REDACTED_TS_TOKEN" }
+  - { match: "AKIA[0-9A-Z]{16}", replace: "REDACTED_AWS_KEY_ID" }
+  - { match: "xoxb-[A-Za-z0-9-]{20,}", replace: "REDACTED_SLACK_BOT_TOKEN" }
+  - { match: "pi-[A-Za-z0-9]{30,}", replace: "REDACTED_PINATA_JWT" }
+
+  # 内部域名 / 子域
+  - { match: "litellm\\.internal", replace: "REDACTED_AI_GATEWAY" }
+  - { match: "alert\\.internal", replace: "REDACTED_ALERT_API" }
+
+  # 真实姓名 (举例 — 用户应该 fork 一份 .private.yaml 加自己的)
+  - { match: "ddvv8848@gmail\\.com", replace: "user@example.com" }

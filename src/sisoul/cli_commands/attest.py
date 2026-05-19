@@ -25,14 +25,26 @@ from sisoul.onchain.eas import (
     NetworkNotSupportedError,
     QueueEmptyError,
     AttestationNotFoundError,
+    SHORT_TO_NETWORK,
     list_history_local,
     list_history_onchain,
     load_config,
+    resolve_chain,
     save_config,
     upload_batch,
     verify_attestation_local,
     verify_attestation_onchain,
 )
+
+
+def _apply_chain_override(cfg: AttestConfig, chain: Optional[str]) -> AttestConfig:
+    """P3-5: --chain optimism|arbitrum|base|zksync 覆盖 config.network + rpc_url + schema_uid 留默认."""
+    if not chain:
+        return cfg
+    cc = resolve_chain(chain)
+    cfg.network = cc.name  # type: ignore[assignment]
+    cfg.rpc_url = cc.rpc_url
+    return cfg
 
 attest_app = typer.Typer(
     name="attest",
@@ -116,6 +128,10 @@ def cmd_flush(
     max_items: int = typer.Option(
         None, "--max-items", help="本次最多 batch N 条 (覆盖 config.batch_size)"
     ),
+    chain: Optional[str] = typer.Option(
+        None, "--chain",
+        help="P3-5 跨链: optimism / arbitrum / base / zksync (覆盖 config.network)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
 ) -> None:
     """强制 batch 上链 (跳过 10 条阈值)."""
@@ -124,6 +140,12 @@ def cmd_flush(
     except EASError as e:
         typer.echo(f"❌ {e}", err=True)
         raise typer.Exit(code=2)
+
+    try:
+        cfg = _apply_chain_override(cfg, chain)
+    except NetworkNotSupportedError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=3)
 
     db = _resolve_db_path(queue_db)
     try:
@@ -173,6 +195,10 @@ def cmd_history(
     attester: str = typer.Option(
         None, "--attester", help="onchain 过滤 attester 地址 (0x...)"
     ),
+    chain: Optional[str] = typer.Option(
+        None, "--chain",
+        help="P3-5 跨链: optimism / arbitrum / base / zksync (覆盖 config.network)"
+    ),
     limit: int = typer.Option(20, "--limit", "-n", help="最多列 N 条"),
     json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
 ) -> None:
@@ -182,6 +208,12 @@ def cmd_history(
     except EASError as e:
         typer.echo(f"❌ {e}", err=True)
         raise typer.Exit(code=2)
+
+    try:
+        cfg = _apply_chain_override(cfg, chain)
+    except NetworkNotSupportedError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=3)
 
     if source == "local":
         db = _resolve_db_path(queue_db)
@@ -247,6 +279,10 @@ def cmd_verify(
     onchain: bool = typer.Option(
         False, "--onchain", help="同时查链上 EAS GraphQL (默认只本地校验)"
     ),
+    chain: Optional[str] = typer.Option(
+        None, "--chain",
+        help="P3-5 跨链: optimism / arbitrum / base / zksync (覆盖 config.network)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
 ) -> None:
     """验证某 attestation 是否真在链上 (本地 recompute + 可选 onchain)."""
@@ -255,6 +291,12 @@ def cmd_verify(
     except EASError as e:
         typer.echo(f"❌ {e}", err=True)
         raise typer.Exit(code=2)
+
+    try:
+        cfg = _apply_chain_override(cfg, chain)
+    except NetworkNotSupportedError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=3)
 
     db = _resolve_db_path(queue_db)
     with AttestQueue(db_path=db) as q:

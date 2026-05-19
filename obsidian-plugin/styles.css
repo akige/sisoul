@@ -1,0 +1,84 @@
+/* Sisoul Meta-Layer plugin styles */
+
+.sisoul-status-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller, 11px);
+}
+
+.sisoul-status-bar .sisoul-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-red);
+  flex: 0 0 auto;
+}
+
+.sisoul-status-bar .sisoul-dot.ok {
+  background: var(--color-green);
+}
+
+.sisoul-status-bar .sisoul-dot.warn {
+  background: var(--color-orange);
+}
+
+.sisoul-ribbon-view {
+  padding: 12px;
+  font-size: var(--font-ui-small);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sisoul-ribbon-view h3 {
+  margin: 0 0 4px 0;
+  font-size: var(--font-ui-medium);
+}
+
+.sisoul-ribbon-view .sisoul-section {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.sisoul-ribbon-view .sisoul-did {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  word-break: break-all;
+  user-select: text;
+  background: var(--background-secondary);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.sisoul-ribbon-view .sisoul-friend-list,
+.sisoul-ribbon-view .sisoul-skill-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sisoul-ribbon-view .sisoul-friend-list li,
+.sisoul-ribbon-view .sisoul-skill-list li {
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.sisoul-ribbon-view .sisoul-refresh-btn {
+  align-self: flex-start;
+}
+
+.sisoul-ribbon-view .sisoul-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+.sisoul-managed-block {
+  background: var(--background-secondary);
+  border-left: 3px solid var(--interactive-accent);
+  padding: 4px 8px;
+}
