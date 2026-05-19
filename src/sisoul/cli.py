@@ -103,6 +103,12 @@ from sisoul.cli_commands.p2p import p2p_app  # noqa: E402
 app.add_typer(p2p_app, name="p2p")
 
 
+# ── peer (Wave A #16 · §F.4 STUN 池 + relay-mode) ────────────────────────────
+from sisoul.cli_commands.peer import peer_app  # noqa: E402
+
+app.add_typer(peer_app, name="peer")
+
+
 # ── attest (W37-W40, 波 4 dev-B, Typer 子 app) ───────────────────────────────
 from sisoul.cli_commands.attest import attest_app  # noqa: E402
 

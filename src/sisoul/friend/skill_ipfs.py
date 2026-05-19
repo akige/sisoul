@@ -3,27 +3,38 @@
 §28 §3.6 AI 技能 share 数据流第 4 步: Bob daemon 把 solidity-expert package 加密 +
 IPFS pin (临时 hash, 24h 过期).
 
-# 设计
+# Wave A-3 v1.0-decentralized 更新
 
-复用波 4 dev-C ``sisoul.onchain.arweave.ArweaveSnapshot.pin_to_ipfs`` 的 Pinata HTTP API
-模式 (`POST https://api.pinata.cloud/pinning/pinFileToIPFS` + Bearer JWT). 但本模块独立类
-``SkillIPFSClient``, 避免拉 ArweaveSnapshot 整套 (它含 vault 加密 + Arweave 上链 + history).
+§32 §B.3 决策: 砍 Pinata SaaS, 主路径换为内嵌 kubo IPFS 节点
+(``sisoul.p2p.ipfs_kubo.IPFSKuboNode``), 朋友间互相 pin.
 
-# 24h 过期实现
+backend 选择:
 
-Pinata 本身没有 "TTL auto-unpin" 概念. 我们 client 端实现:
+- ``backend="kubo"``: 走 IPFSKuboNode (Wave A-3 default 目标).
+- ``backend="pinata"``: 走原 Pinata HTTP API (legacy / backward-compat).
+- ``backend="auto"`` (默认): env ``SISOUL_IPFS_BACKEND=kubo`` 时走 kubo,
+  否则 Pinata (向后兼容现有测试 / 生产部署平滑迁移).
+
+env ``SISOUL_IPFS_BACKEND`` 取值: ``kubo`` / ``pinata`` / ``auto`` (默认).
+
+# 24h 过期实现 (Pinata legacy 路径)
+
+Pinata 本身没有 "TTL auto-unpin" 概念. client 端实现:
 
 1. pin 时调 ``POST /pinning/pinFileToIPFS`` 同时带 ``pinataMetadata.keyvalues.expires_at``
    = unix ts (Pinata 接 metadata 透传).
 2. sisoul daemon scheduler 定期跑 ``unpin_expired_skills()`` 扫所有过期 CID 调
    ``DELETE /pinning/unpin/{cid}`` (本模块 export, daemon cron 5min 跑).
-3. 本地 SQLite ``~/.sisoul/skill_pins.db`` 记本机 pin 过的 CID + expiry (Pinata metadata
-   是辅助, 本地 DB 是真相源 — 跨 Pinata account / 跨设备时本地 DB 仍能 unpin).
+3. 本地 SQLite ``~/.sisoul/skill_pins.db`` 记本机 pin 过的 CID + expiry.
+
+# 24h 过期实现 (kubo 路径)
+
+kubo 也无 TTL, 同样靠本地 DB + scheduler. unpin 调 ``ipfs pin rm`` 而非 Pinata DELETE.
 
 # 模块边界
 
 - 本文件: SkillIPFSClient + pin_skill_to_ipfs + fetch_skill_from_ipfs +
-  unpin_expired_skills + SkillPinDB
+  unpin_expired_skills + SkillPinDB + KuboBackend (Wave A-3)
 - 不在本文件: SkillPackage 数据结构 (skill_package.py) / borrow lifecycle (skill_borrow.py)
 """
 
@@ -95,6 +106,9 @@ class SkillPinRecord:
     """单条 IPFS pin 记录 (~/.sisoul/skill_pins.db).
 
     用 owner_did + skill_id 索引 → 同一 skill 多版本可同时 pin.
+
+    Wave A-3 新增 `backend` 字段区分 pinata / kubo / mock. `pinata_pinned`
+    保留兼容现有测试, 含义扩展为 "已上 IPFS pin" (pinata 或 kubo).
     """
 
     cid: str
@@ -107,6 +121,7 @@ class SkillPinRecord:
     unpinned: bool = False
     unpinned_at: Optional[int] = None
     note: Optional[str] = None
+    backend: str = "pinata"  # "pinata" | "kubo" | "mock"  Wave A-3
 
     def is_expired(self, now: int | None = None) -> bool:
         n = now or int(time.time())
@@ -130,13 +145,20 @@ CREATE TABLE IF NOT EXISTS skill_pins (
     pinata_pinned INTEGER NOT NULL DEFAULT 1,
     unpinned INTEGER NOT NULL DEFAULT 0,
     unpinned_at INTEGER,
-    note TEXT
+    note TEXT,
+    backend TEXT NOT NULL DEFAULT 'pinata'
 );
 
 CREATE INDEX IF NOT EXISTS idx_skill_pins_owner ON skill_pins(owner_did);
 CREATE INDEX IF NOT EXISTS idx_skill_pins_expires ON skill_pins(expires_at);
 CREATE INDEX IF NOT EXISTS idx_skill_pins_unpinned ON skill_pins(unpinned);
 """
+
+# Wave A-3: 旧 DB 迁移 (新增 backend 列, IF NOT EXISTS).
+_SKILL_PIN_MIGRATE_SQL = [
+    # SQLite < 3.35 不支持 IF NOT EXISTS, 用 try/except 包. ALTER TABLE 加默认列幂等失败 ok.
+    "ALTER TABLE skill_pins ADD COLUMN backend TEXT NOT NULL DEFAULT 'pinata'",
+]
 
 
 class SkillPinDB:
@@ -157,6 +179,12 @@ class SkillPinDB:
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SKILL_PIN_SCHEMA_SQL)
+        # Wave A-3 迁移: 旧 DB 没 backend 列, 加上. 已有 → ALTER 抛 OperationalError 忽略.
+        for stmt in _SKILL_PIN_MIGRATE_SQL:
+            try:
+                self._conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # 列已存在
         self._conn.commit()
 
     def close(self) -> None:
@@ -175,8 +203,8 @@ class SkillPinDB:
         self._conn.execute(
             "INSERT OR REPLACE INTO skill_pins "
             "(cid, owner_did, skill_id, pinned_at, expires_at, size_bytes, "
-            " pinata_pinned, unpinned, unpinned_at, note) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " pinata_pinned, unpinned, unpinned_at, note, backend) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 rec.cid,
                 rec.owner_did,
@@ -188,6 +216,7 @@ class SkillPinDB:
                 1 if rec.unpinned else 0,
                 rec.unpinned_at,
                 rec.note,
+                rec.backend or "pinata",
             ),
         )
         self._conn.commit()
@@ -257,6 +286,11 @@ class SkillPinDB:
 
     @staticmethod
     def _row_to_record(r: sqlite3.Row) -> SkillPinRecord:
+        # backend 列 Wave A-3 加, 旧行可能没有, 容错
+        try:
+            backend = r["backend"] or "pinata"
+        except (IndexError, KeyError):
+            backend = "pinata"
         return SkillPinRecord(
             cid=r["cid"],
             owner_did=r["owner_did"],
@@ -268,6 +302,7 @@ class SkillPinDB:
             unpinned=bool(r["unpinned"]),
             unpinned_at=int(r["unpinned_at"]) if r["unpinned_at"] is not None else None,
             note=r["note"],
+            backend=backend,
         )
 
 
@@ -275,7 +310,13 @@ class SkillPinDB:
 
 
 class SkillIPFSClient:
-    """Pinata HTTP API 客户端 (skill blob pin/fetch/unpin).
+    """IPFS 客户端 (skill blob pin/fetch/unpin).
+
+    Wave A-3: 支持双 backend.
+
+    - ``backend="pinata"``: Pinata HTTP API (legacy).
+    - ``backend="kubo"``: 内嵌 kubo 子进程 (推荐, 详 ``sisoul.p2p.ipfs_kubo``).
+    - ``backend="auto"`` (默认): env ``SISOUL_IPFS_BACKEND=kubo`` 时走 kubo, 否则 pinata.
 
     pinata_jwt 优先级: 构造参数 > env ``PINATA_JWT`` > 走 mock (开发期 fallback,
     返 mockcid-<sha> 不真上 Pinata).
@@ -288,14 +329,104 @@ class SkillIPFSClient:
         db_path: Optional[Path | str] = None,
         api_base: str = PINATA_API_BASE,
         gateways: tuple[str, ...] = IPFS_GATEWAYS,
+        backend: str = "auto",
+        kubo_node: Optional[Any] = None,
     ) -> None:
         self.pinata_jwt = pinata_jwt or os.environ.get("PINATA_JWT")
         self.api_base = api_base
         self.gateways = gateways
         self._db_path = Path(db_path) if db_path else None
+        # Wave A-3: backend 选择
+        if backend == "auto":
+            env_backend = os.environ.get("SISOUL_IPFS_BACKEND", "pinata").strip().lower()
+            backend = env_backend if env_backend in ("kubo", "pinata", "mock") else "pinata"
+        if backend not in ("kubo", "pinata", "mock"):
+            raise ValueError(f"backend 必须 kubo/pinata/mock, got {backend!r}")
+        self.backend = backend
+        self._kubo_node = kubo_node  # lazy import 避免循环
 
     def _db(self) -> SkillPinDB:
         return SkillPinDB(db_path=self._db_path)
+
+    def _get_kubo_node(self) -> Any:
+        """lazy 拿 IPFSKuboNode (Wave A-3). 避免循环 import."""
+        if self._kubo_node is not None:
+            return self._kubo_node
+        from sisoul.p2p.ipfs_kubo import get_default_node
+        self._kubo_node = get_default_node()
+        return self._kubo_node
+
+    def _kubo_pin(
+        self,
+        encrypted_skill_bytes: bytes,
+        *,
+        owner_did: str,
+        skill_id: str,
+        expires_at: int,
+    ) -> tuple[str, bool]:
+        """走 kubo 路径 pin. 返 (cid, pinned_bool).
+
+        kubo 找不到 binary → 自动降 mock (sha-based cid + 本地 cache).
+        """
+        node = self._get_kubo_node()
+        # mock 模式 (无 kubo binary): 自降 mockcid + cache
+        if getattr(node, "mode", None) == "mock":
+            cid = "mockcid-" + hashlib.sha256(encrypted_skill_bytes).hexdigest()[:46]
+            _MOCK_BLOB_CACHE[cid] = bytes(encrypted_skill_bytes)
+            return cid, False
+
+        # 真 kubo subprocess: start lazy + add
+        import asyncio as _aio
+        if not node.is_running:
+            try:
+                _aio.run(node.start())
+            except RuntimeError:
+                # 已在 loop 中, 试 sync 入口
+                node.start_sync()
+        try:
+            cid = _aio.run(node.add(bytes(encrypted_skill_bytes), pin=True))
+        except (RuntimeError, Exception) as e:  # noqa: BLE001
+            raise SkillPinError(f"kubo add 失败: {type(e).__name__}: {e}") from e
+        return cid, True
+
+    def _kubo_fetch(self, cid: str, *, timeout_sec: float) -> bytes:
+        """走 kubo cat."""
+        node = self._get_kubo_node()
+        if getattr(node, "mode", None) == "mock":
+            blob = _MOCK_BLOB_CACHE.get(cid)
+            if blob is None:
+                raise SkillFetchError(
+                    f"kubo mock 模式: cid {cid} 不在 _MOCK_BLOB_CACHE"
+                )
+            return blob
+        import asyncio as _aio
+        if not node.is_running:
+            try:
+                _aio.run(node.start())
+            except RuntimeError:
+                node.start_sync()
+        try:
+            return _aio.run(node.cat(cid, timeout=timeout_sec))
+        except Exception as e:  # noqa: BLE001
+            raise SkillFetchError(f"kubo cat 失败: {type(e).__name__}: {e}") from e
+
+    def _kubo_unpin(self, cid: str) -> bool:
+        """走 kubo pin rm."""
+        node = self._get_kubo_node()
+        if getattr(node, "mode", None) == "mock":
+            _MOCK_BLOB_CACHE.pop(cid, None)
+            return True
+        import asyncio as _aio
+        if not node.is_running:
+            try:
+                _aio.run(node.start())
+            except RuntimeError:
+                node.start_sync()
+        try:
+            _aio.run(node.unpin(cid))
+            return True
+        except Exception as e:  # noqa: BLE001
+            raise SkillUnpinError(f"kubo unpin 失败: {type(e).__name__}: {e}") from e
 
     # ── pin ────────────────────────────────────────────────────────────────
 
@@ -342,6 +473,51 @@ class SkillIPFSClient:
         cid: Optional[str] = None
         pinata_pinned = False
 
+        # Wave A-3: kubo backend 路径
+        if self.backend == "kubo":
+            cid, pinned = self._kubo_pin(
+                encrypted_skill_bytes,
+                owner_did=owner_did,
+                skill_id=skill_id,
+                expires_at=expires_at,
+            )
+            pinata_pinned = pinned  # field 兼容: True = 真上 IPFS
+            rec = SkillPinRecord(
+                cid=cid,
+                owner_did=owner_did,
+                skill_id=skill_id,
+                pinned_at=now,
+                expires_at=expires_at,
+                size_bytes=size,
+                pinata_pinned=pinata_pinned,
+                unpinned=False,
+                note=note,
+                backend="kubo" if pinned else "mock",
+            )
+            with self._db() as db:
+                db.upsert(rec)
+            return rec
+
+        if self.backend == "mock":
+            cid = "mockcid-" + hashlib.sha256(encrypted_skill_bytes).hexdigest()[:46]
+            _MOCK_BLOB_CACHE[cid] = bytes(encrypted_skill_bytes)
+            rec = SkillPinRecord(
+                cid=cid,
+                owner_did=owner_did,
+                skill_id=skill_id,
+                pinned_at=now,
+                expires_at=expires_at,
+                size_bytes=size,
+                pinata_pinned=False,
+                unpinned=False,
+                note=note,
+                backend="mock",
+            )
+            with self._db() as db:
+                db.upsert(rec)
+            return rec
+
+        # backend == "pinata" (legacy 路径) ↓
         if not self.pinata_jwt:
             # mock fallback
             cid = "mockcid-" + hashlib.sha256(encrypted_skill_bytes).hexdigest()[:46]
@@ -390,6 +566,7 @@ class SkillIPFSClient:
             pinata_pinned=pinata_pinned,
             unpinned=False,
             note=note,
+            backend="pinata" if pinata_pinned else "mock",
         )
         with self._db() as db:
             db.upsert(rec)
@@ -425,6 +602,10 @@ class SkillIPFSClient:
                     "test 用 register_mock_blob() 先 cache."
                 )
             return blob
+
+        # Wave A-3: kubo 路径
+        if self.backend == "kubo":
+            return self._kubo_fetch(cid, timeout_sec=timeout_sec)
 
         last_err: Exception = SkillFetchError("no gateway tried")
         for tpl in self.gateways:
@@ -469,6 +650,17 @@ class SkillIPFSClient:
             if rec and rec.unpinned:
                 # 已经 unpin 过, 幂等返
                 return True
+
+        # Wave A-3: kubo 路径
+        if self.backend == "kubo":
+            try:
+                ok = self._kubo_unpin(cid)
+            except SkillUnpinError:
+                raise
+            with self._db() as db:
+                if db.get(cid):
+                    db.mark_unpinned(cid)
+            return ok
 
         if cid.startswith("mockcid-") or not self.pinata_jwt:
             # mock / 无 jwt: 仅本地标. mock cache 清掉.
@@ -529,6 +721,67 @@ def fetch_skill_from_ipfs(
     """简化 wrapper. 返 encrypted blob, 调用方再 decrypt_skill_package()."""
     client = SkillIPFSClient(pinata_jwt=pinata_jwt, db_path=db_path)
     return client.fetch(cid)
+
+
+def pin_for_friend(
+    did: str,
+    cid: str,
+    *,
+    size_bytes: int = 0,
+    expires_at: Optional[int] = None,
+    is_friend_check: Optional[Any] = None,
+    db_path: Optional[Path | str] = None,
+) -> bool:
+    """Wave A-3: 朋友请我 pin 一个 CID. 走 kubo backend.
+
+    现成 wrapper, 透传到 IPFSKuboNode.pin_for_friend + 写本地 DB.
+
+    Args:
+        did: 朋友 DID (whitelist 检查用).
+        cid: 要 pin 的 CID.
+        size_bytes: 朋友报的体积 (size_limit gate).
+        expires_at: 过期 ts (None = 永久 pin, scheduler 不会 unpin).
+        is_friend_check: callable(did)->bool, None = 默认拒.
+        db_path: 本地 DB.
+
+    Returns:
+        True = 真 pin 上; False = 拒.
+    """
+    from sisoul.p2p.ipfs_kubo import get_default_node
+    import asyncio as _aio
+
+    node = get_default_node()
+    try:
+        accepted = _aio.run(node.pin_for_friend(
+            did, cid,
+            size_bytes=size_bytes,
+            expires_at=expires_at,
+            is_friend_check=is_friend_check,
+        ))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pin_for_friend(%s, %s) 失败: %s", did, cid, e)
+        return False
+
+    if accepted:
+        # 记本地 DB (用 friend DID 作 owner_did)
+        now = int(time.time())
+        # 默认 30d expiry (跟 §B.3.6 R4 一致), 除非 caller 指定永久
+        exp = expires_at or (now + 30 * 24 * 3600)
+        rec = SkillPinRecord(
+            cid=cid,
+            owner_did=did,
+            skill_id=f"friend-pin:{cid[:12]}",
+            pinned_at=now,
+            expires_at=exp,
+            size_bytes=size_bytes,
+            pinata_pinned=True,
+            unpinned=False,
+            note=f"friend pin request from {did}",
+            backend="kubo",
+        )
+        with SkillPinDB(db_path=db_path) as db:
+            db.upsert(rec)
+    return accepted
 
 
 def unpin_expired_skills(
@@ -605,6 +858,7 @@ __all__ = [
     "pin_skill_to_ipfs",
     "fetch_skill_from_ipfs",
     "unpin_expired_skills",
+    "pin_for_friend",  # Wave A-3
     # test helpers
     "register_mock_blob",
     "clear_mock_blob_cache",
