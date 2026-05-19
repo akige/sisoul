@@ -256,27 +256,37 @@ class LibP2PUnavailable(RuntimeError):
     """libp2p 库不可用 / 启动失败. select_transport 捕获后 fallback."""
 
 
-# ── STUN/TURN ICE servers 配置 (P1-6 #2) ──────────────────────────────────────
+# ── STUN/TURN ICE servers 配置 (Wave A #16 · §F.4) ─────────────────────────────
 
 
 def _default_ice_servers() -> list[dict[str, Any]]:
-    """从 env 读 ICE server 配置.
+    """ICE server 列表 (Wave A #16 改: 5 STUN 池替单点 Google, 砍 Twilio NTS 默认).
 
-    支持:
-      - ``SISOUL_STUN_URLS``  : 逗号分隔, e.g. ``stun:stun.l.google.com:19302``
-      - ``SISOUL_TURN_URL``   : 单个 TURN URL, e.g. ``turn:turn.example.com:3478``
-      - ``SISOUL_TURN_USERNAME`` + ``SISOUL_TURN_CREDENTIAL`` : Twilio NTS 等
+    §32 §F.4 #16 设计:
+    - 默认 5 STUN 公共池 (Google / Cloudflare / Nextcloud / STUN protocol / Mozilla)
+    - 5 独立 org, 全挂概率 ~0 (R-09: P=0.05, 缓解后接近 0)
+    - **TURN 默认不开** (砍 Twilio NTS 中心化依赖); 5% NAT 失败用户可:
+      a. 自部 coturn 走 ``SISOUL_TURN_URL`` env 填
+      b. 朋友 daemon 当 TURN relay (``sisoul peer relay-mode on``)
 
-    没配 env → 默认 Google 公共 STUN (无 TURN, 受限 NAT 穿透不成功).
-    生产推荐用 Twilio NTS 或自部 coturn.
+    env 覆盖:
+      - ``SISOUL_STUN_URLS``: 逗号分隔, 完全替换 default pool
+      - ``SISOUL_TURN_URL``: 单个 TURN URL (默认空)
+      - ``SISOUL_TURN_USERNAME`` + ``SISOUL_TURN_CREDENTIAL``: TURN 认证 (RFC 5766)
+
+    返回值未做 STUN 探活, 仅静态 list. 真启动时 daemon 可调 ``probe_stun_pool()``
+    排序选 top alive (§F.4.3 数据流).
     """
-    servers: list[dict[str, Any]] = []
-    stun_env = os.environ.get("SISOUL_STUN_URLS", "stun:stun.l.google.com:19302")
-    if stun_env:
-        for url in [u.strip() for u in stun_env.split(",") if u.strip()]:
-            servers.append({"urls": url})
+    from sisoul.p2p.stun_pool import (
+        load_stun_pool_from_env,
+        stun_pool_to_ice_servers,
+    )
 
-    turn_url = os.environ.get("SISOUL_TURN_URL")
+    stun_urls = load_stun_pool_from_env()
+    servers: list[dict[str, Any]] = stun_pool_to_ice_servers(stun_urls)
+
+    # TURN: 默认空, 用户自填. 不再默认 Twilio NTS.
+    turn_url = os.environ.get("SISOUL_TURN_URL", "").strip()
     if turn_url:
         entry: dict[str, Any] = {"urls": turn_url}
         username = os.environ.get("SISOUL_TURN_USERNAME")
