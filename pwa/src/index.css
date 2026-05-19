@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply bg-sisoul-bg text-sisoul-text h-full;
+    -webkit-font-smoothing: antialiased;
+  }
+  #root {
+    @apply h-full flex;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.sisoul.border') transparent;
+  }
+}

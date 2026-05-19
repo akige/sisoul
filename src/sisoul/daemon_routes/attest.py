@@ -34,10 +34,21 @@ from sisoul.onchain.eas import (
     list_history_onchain,
     load_config,
     resolve_attester_did,
+    resolve_chain,
     upload_batch,
     verify_attestation_local,
     verify_attestation_onchain,
 )
+
+
+def _apply_chain(cfg: AttestConfig, chain: Optional[str]) -> AttestConfig:
+    """P3-5: ?chain=optimism|arbitrum|base|zksync 覆盖 cfg.network + rpc_url."""
+    if not chain:
+        return cfg
+    cc = resolve_chain(chain)
+    cfg.network = cc.name  # type: ignore[assignment]
+    cfg.rpc_url = cc.rpc_url
+    return cfg
 
 attest_router = APIRouter(prefix="/sisoul/attest", tags=["attest"])
 
@@ -112,6 +123,8 @@ class FlushRequest(BaseModel):
     max_items: Optional[int] = None
     config_path: Optional[str] = None
     queue_db: Optional[str] = None
+    # P3-5: 跨链 query (POST body 也支持)
+    chain: Optional[str] = None
 
 
 class FlushResponse(BaseModel):
@@ -263,12 +276,19 @@ def get_queue(
 
 
 @attest_router.post("/flush", response_model=FlushResponse)
-def post_flush(req: FlushRequest) -> FlushResponse:
-    """强制 batch 上链 (跳过 batch_size 阈值)."""
+def post_flush(req: FlushRequest, chain: Optional[str] = Query(None)) -> FlushResponse:
+    """强制 batch 上链 (跳过 batch_size 阈值). P3-5 支持 ?chain= 或 body.chain."""
     try:
         cfg = _config(req.config_path)
     except EASError as e:
         raise HTTPException(status_code=500, detail=f"config: {e}")
+
+    # P3-5: query param 优先于 body
+    chain_eff = chain or req.chain
+    try:
+        cfg = _apply_chain(cfg, chain_eff)
+    except NetworkNotSupportedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     db = Path(req.queue_db) if req.queue_db else None
     try:
@@ -305,12 +325,20 @@ def get_history(
     limit: int = Query(20, ge=1, le=200),
     config_path: Optional[str] = Query(None),
     queue_db: Optional[str] = Query(None),
+    chain: Optional[str] = Query(
+        None, description="P3-5: optimism/arbitrum/base/zksync (覆盖 config.network)"
+    ),
 ) -> HistoryResponse:
     """attestation 历史 (本地 batches 或链上 EAS GraphQL)."""
     try:
         cfg = _config(config_path)
     except EASError as e:
         raise HTTPException(status_code=500, detail=f"config: {e}")
+
+    try:
+        cfg = _apply_chain(cfg, chain)
+    except NetworkNotSupportedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     if source == "local":
         db = Path(queue_db) if queue_db else None
@@ -362,12 +390,20 @@ def get_verify(
     onchain: bool = Query(False, description="同时查链上 EAS GraphQL"),
     queue_db: Optional[str] = Query(None),
     config_path: Optional[str] = Query(None),
+    chain: Optional[str] = Query(
+        None, description="P3-5: optimism/arbitrum/base/zksync (覆盖 config.network)"
+    ),
 ) -> VerifyResponse:
     """verify attestation (本地 recompute + 可选 onchain)."""
     try:
         cfg = _config(config_path)
     except EASError as e:
         raise HTTPException(status_code=500, detail=f"config: {e}")
+
+    try:
+        cfg = _apply_chain(cfg, chain)
+    except NetworkNotSupportedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     db = Path(queue_db) if queue_db else None
     with AttestQueue(db_path=db) as q:

@@ -1,4 +1,4 @@
-"""sisoul login 命令 (Phase 1 W5).
+"""sisoul login 命令.
 
 sisoul login --provider X [--api-key KEY]
 
@@ -6,21 +6,18 @@ sisoul login --provider X [--api-key KEY]
 1. provider alias 规范化 (anthropic → claude, gpt → openai 等)
 2. api_key: --api-key 传入 > 读 provider 对应 env var > interactive prompt
 3. 验证: chat("say 'pong'", max_tokens=10) 看是否返回 (1 token 回环)
-4. 写 ~/.sisoul/config.yaml (active_provider + api_key_encrypted placeholder)
+4. 写 ~/.sisoul/config.yaml (active_provider + api_key 走 vault encryption 加密)
 5. 输出: logged in / 验证响应
 
 config.yaml 结构:
     active_provider: claude
     providers:
       claude:
-        api_key: "<TODO: vault encryption W4>"
+        api_key: "enc:v1:<base64 libsodium SecretBox blob>"
         model: claude-opus-4-7
-      openai:
-        api_key: "<encrypted placeholder>"
-        model: gpt-4o
 
-TODO: api_key 加密 — 目前 plaintext (Phase 1 W4 vault encryption 接进来后替换).
-TODO: 调 vault encryption 的 encrypt_bytes, 用 master_key_hash 派生加密.
+api_key 加密: vault.encryption.encrypt_text(api_key, master_key) → base64.
+master_key 来源: BIP-39 seed 派生 (sisoul.vault.encryption.derive_master_key).
 """
 
 from __future__ import annotations
@@ -81,26 +78,39 @@ def _write_config(config_path: Path, config: dict) -> None:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
-def _encrypt_api_key_placeholder(api_key: str) -> str:
-    """API key 加密占位 (TODO: Phase 1 W4 vault encryption 接进来后替换真加密).
+def _encrypt_api_key(api_key: str) -> str:
+    """API key 加密 → "enc:v1:<base64 libsodium SecretBox blob>".
 
-    目前: base64 编码 (非加密, 只是混淆), 实际应用 libsodium SecretBox.
+    master_key 来源: BIP-39 seed 派生 (vault.encryption.derive_master_key).
+    没 seed → fallback PLACEHOLDER (warning), 兼容内测期未 init 用户.
     """
     import base64
-    # TODO: 替换为 vault.encrypt_bytes(api_key.encode(), master_key) 后 base64
-    encoded = base64.b64encode(api_key.encode()).decode()
-    return f"enc:b64:{encoded}"  # 加前缀方便后续迁移识别
+
+    from sisoul.vault.encryption import derive_master_key, encrypt_text
+
+    master_key = derive_master_key()
+    blob = encrypt_text(api_key, master_key)
+    return "enc:v1:" + base64.b64encode(blob).decode()
 
 
-def _decrypt_api_key_placeholder(encrypted: str) -> str:
-    """解密 placeholder (配对 _encrypt_api_key_placeholder).
-
-    TODO: 真加密时替换.
-    """
+def _decrypt_api_key(encrypted: str) -> str:
+    """解密 enc:v1: 或兼容 enc:b64: legacy."""
     import base64
+
+    if encrypted.startswith("enc:v1:"):
+        from sisoul.vault.encryption import decrypt_text, derive_master_key
+
+        master_key = derive_master_key()
+        blob = base64.b64decode(encrypted[len("enc:v1:") :])
+        return decrypt_text(blob, master_key)
     if encrypted.startswith("enc:b64:"):
-        return base64.b64decode(encrypted[8:]).decode()
-    return encrypted  # 兼容老格式 (迁移期)
+        return base64.b64decode(encrypted[len("enc:b64:") :]).decode()
+    return encrypted  # 兼容历史 plaintext
+
+
+# 向后兼容 alias (老 import 不破)
+_encrypt_api_key_placeholder = _encrypt_api_key
+_decrypt_api_key_placeholder = _decrypt_api_key
 
 
 def _verify_provider(provider: str, api_key: str | None) -> tuple[bool, str]:
@@ -195,8 +205,7 @@ def run_login(
 
     provider_entry: dict = {"model": _get_default_model(canonical)}
     if api_key:
-        # TODO: 替换 _encrypt_api_key_placeholder 为真 vault encryption
-        provider_entry["api_key"] = _encrypt_api_key_placeholder(api_key)
+        provider_entry["api_key"] = _encrypt_api_key(api_key)
     else:
         provider_entry["api_key"] = None
 
@@ -250,7 +259,7 @@ def get_active_adapter(config_path: Path | None = None):
 
     api_key = None
     if encrypted_key:
-        api_key = _decrypt_api_key_placeholder(encrypted_key)
+        api_key = _decrypt_api_key(encrypted_key)
 
     try:
         return get_adapter(active, api_key=api_key, model=model)

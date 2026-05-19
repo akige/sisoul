@@ -127,6 +127,34 @@ def create_app() -> FastAPI:
     except Exception as e:
         print(f"[daemon] skill_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Phase 2 P2-2 (RAG selective inject) ─────────────────────────────────
+    try:
+        from sisoul.daemon_routes.rag import rag_router
+        app.include_router(rag_router)
+    except Exception as e:
+        print(f"[daemon] rag_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+    # ── Phase 2 P2-3 (Goal-mode v1.1 scheduler + reminder) ──────────────────
+    try:
+        from sisoul.daemon_routes.goal import goal_router
+        app.include_router(goal_router)
+    except Exception as e:
+        print(f"[daemon] goal_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+    # Phase 2 P2-3: spawn goal scheduler 后台 task (daemon 启动时)
+    try:
+        from sisoul.goal.scheduler import register_scheduler_on_app
+        register_scheduler_on_app(app)
+    except Exception as e:
+        print(f"[daemon] goal scheduler register failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+    # ── Phase 3 P3-4 routes (DAO governance: SisoulGov + PIPRegistry) ────────
+    try:
+        from sisoul.daemon_routes.dao import dao_router
+        app.include_router(dao_router)
+    except Exception as e:
+        print(f"[daemon] dao_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
+
     return app
 
 

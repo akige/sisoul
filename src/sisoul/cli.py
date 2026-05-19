@@ -210,6 +210,12 @@ from sisoul.cli_commands.skill import skill_app  # noqa: E402
 app.add_typer(skill_app, name="skill")
 
 
+# ── dao (Phase 3 P3-4, SisoulGov + PIPRegistry on-chain governance) ──────────
+from sisoul.cli_commands.dao import dao_app  # noqa: E402
+
+app.add_typer(dao_app, name="dao")
+
+
 # ── daemon (W2, 本会话) ──────────────────────────────────────────────────────
 @app.command()
 def daemon(

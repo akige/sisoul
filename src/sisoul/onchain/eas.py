@@ -45,11 +45,62 @@ OPTIMISM_SEPOLIA_DEFAULT_RPC = "https://sepolia.optimism.io"
 EAS_CONTRACT_OPTIMISM_SEPOLIA = "0x4200000000000000000000000000000000000021"
 EAS_SCHEMA_REGISTRY_OPTIMISM_SEPOLIA = "0x4200000000000000000000000000000000000020"
 
-# Mainnet 硬禁用 (波 4 约束).
+# Mainnet 硬禁用 (波 4 + P3-5 约束). 各链 mainnet 地址都列在 MAINNET_BLOCKED_CHAINS.
 EAS_CONTRACT_OPTIMISM_MAINNET = "0x4200000000000000000000000000000000000021"
+EAS_CONTRACT_ARBITRUM_ONE = "0xbD75f629A22Dc1ceD33dDA0b68c546A1c035c458"
+EAS_CONTRACT_BASE_MAINNET = "0x4200000000000000000000000000000000000021"
+EAS_CONTRACT_ZKSYNC_ERA = "0x21d8d8eE9F6cD3eEdc0CeB823b73Cbe3A07d0bAa"
 
-# Network 类型.
-Network = Literal["optimism-sepolia", "optimism-mainnet", "mock"]
+# Phase 3 P3-5: 跨链 attest. 加 Arbitrum / Base / zkSync Sepolia testnet 真地址.
+# 来源: https://docs.attest.org/docs/quick--start/contracts (公开常量, 非凭据).
+ARBITRUM_SEPOLIA_CHAIN_ID = 421614
+ARBITRUM_SEPOLIA_DEFAULT_RPC = "https://sepolia-rollup.arbitrum.io/rpc"
+EAS_CONTRACT_ARBITRUM_SEPOLIA = "0xaEF4103A04090071165F78D45D83A0C0782c2B2a"
+
+BASE_SEPOLIA_CHAIN_ID = 84532
+BASE_SEPOLIA_DEFAULT_RPC = "https://sepolia.base.org"
+EAS_CONTRACT_BASE_SEPOLIA = "0x4200000000000000000000000000000000000021"
+
+ZKSYNC_SEPOLIA_CHAIN_ID = 300
+ZKSYNC_SEPOLIA_DEFAULT_RPC = "https://sepolia.era.zksync.dev"
+EAS_CONTRACT_ZKSYNC_SEPOLIA = "0x21d8d8eE9F6cD3eEdc0CeB823b73Cbe3A07d0bAa"
+
+# Network 类型. P3-5 扩 Arbitrum / Base / zkSync.
+Network = Literal[
+    "optimism-sepolia",
+    "optimism-mainnet",
+    "arbitrum-sepolia",
+    "arbitrum-mainnet",
+    "base-sepolia",
+    "base-mainnet",
+    "zksync-sepolia",
+    "zksync-mainnet",
+    "mock",
+]
+
+# 所有 mainnet — 一律拒上链.
+MAINNET_BLOCKED_CHAINS: set[str] = {
+    "optimism-mainnet",
+    "arbitrum-mainnet",
+    "base-mainnet",
+    "zksync-mainnet",
+}
+
+# Network → chain_id 反查 (用于 RPC chain_id 校验).
+CHAIN_ID_BY_NETWORK: dict[str, int] = {
+    "optimism-sepolia": OPTIMISM_SEPOLIA_CHAIN_ID,
+    "arbitrum-sepolia": ARBITRUM_SEPOLIA_CHAIN_ID,
+    "base-sepolia": BASE_SEPOLIA_CHAIN_ID,
+    "zksync-sepolia": ZKSYNC_SEPOLIA_CHAIN_ID,
+}
+
+# Short alias (CLI --chain optimism|arbitrum|base|zksync) → testnet network.
+SHORT_TO_NETWORK: dict[str, str] = {
+    "optimism": "optimism-sepolia",
+    "arbitrum": "arbitrum-sepolia",
+    "base": "base-sepolia",
+    "zksync": "zksync-sepolia",
+}
 
 # Batch 阈值默认.
 DEFAULT_BATCH_SIZE = 10
@@ -100,6 +151,79 @@ class QueueEmptyError(EASError):
 
 class ConfigError(EASError):
     """config 缺失 / 不合法."""
+
+
+# ── P3-5 跨链 chain 配置 ────────────────────────────────────────────────────
+
+
+@dataclass
+class ChainConfig:
+    """单条 chain 配置 (P3-5 跨链路由)."""
+
+    name: str
+    chain_id: int
+    rpc_url: str
+    eas_contract: str
+    is_mainnet: bool = False
+    # 默认 schema UID (上线后由 SchemaRegistry.register() 链上返; mock 用 MOCK_SCHEMA_UID)
+    schema_uid: str = ""
+
+
+# 公开 chain 注册表 (CLI / daemon / config 共用). key 是 short 名.
+# is_mainnet=True 一律 hard gate (这里只列 testnet, mainnet 走 MAINNET_BLOCKED_CHAINS 拒).
+CHAIN_REGISTRY: dict[str, ChainConfig] = {
+    "optimism": ChainConfig(
+        name="optimism-sepolia",
+        chain_id=OPTIMISM_SEPOLIA_CHAIN_ID,
+        rpc_url=OPTIMISM_SEPOLIA_DEFAULT_RPC,
+        eas_contract=EAS_CONTRACT_OPTIMISM_SEPOLIA,
+        is_mainnet=False,
+    ),
+    "arbitrum": ChainConfig(
+        name="arbitrum-sepolia",
+        chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
+        rpc_url=ARBITRUM_SEPOLIA_DEFAULT_RPC,
+        eas_contract=EAS_CONTRACT_ARBITRUM_SEPOLIA,
+        is_mainnet=False,
+    ),
+    "base": ChainConfig(
+        name="base-sepolia",
+        chain_id=BASE_SEPOLIA_CHAIN_ID,
+        rpc_url=BASE_SEPOLIA_DEFAULT_RPC,
+        eas_contract=EAS_CONTRACT_BASE_SEPOLIA,
+        is_mainnet=False,
+    ),
+    "zksync": ChainConfig(
+        name="zksync-sepolia",
+        chain_id=ZKSYNC_SEPOLIA_CHAIN_ID,
+        rpc_url=ZKSYNC_SEPOLIA_DEFAULT_RPC,
+        eas_contract=EAS_CONTRACT_ZKSYNC_SEPOLIA,
+        is_mainnet=False,
+    ),
+}
+
+
+def resolve_chain(short_or_network: str) -> ChainConfig:
+    """传 short ('optimism') 或全名 ('optimism-sepolia') 拿 ChainConfig.
+
+    mainnet 网络名 → 抛 NetworkNotSupportedError (hard gate).
+    未知 → NetworkNotSupportedError.
+    """
+    key = (short_or_network or "").lower()
+    if key in MAINNET_BLOCKED_CHAINS:
+        raise NetworkNotSupportedError(
+            f"{key} 上链被禁用 (P3-5 跨链 hard gate: 不花真钱). Phase 5 GA 切开."
+        )
+    if key in CHAIN_REGISTRY:
+        return CHAIN_REGISTRY[key]
+    for _short, _cfg in CHAIN_REGISTRY.items():
+        if _cfg.name == key:
+            return _cfg
+    raise NetworkNotSupportedError(
+        f"未知 chain '{short_or_network}'. 支持: "
+        f"{sorted(CHAIN_REGISTRY.keys())} 或全名 "
+        f"{[c.name for c in CHAIN_REGISTRY.values()]}"
+    )
 
 
 # ── 数据结构 ─────────────────────────────────────────────────────────────────
@@ -204,6 +328,8 @@ class AttestConfig:
     private_key_path: str | None = None  # PEM / hex file path; None=mock 不签
     schema_uid: str = MOCK_SCHEMA_UID  # 默认 mock; 真注册后改
     attester_did: str | None = None  # 默认 None=registry 第一条
+    # mainnet 双 gate (P1-6 #3): config.confirm_mainnet=True + env EAS_ALLOW_MAINNET=1 才放行
+    confirm_mainnet: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -592,10 +718,15 @@ def upload_batch(
 
     返 BatchResult (含 batch_uid / tx_hash / attestation_uids 等).
     """
-    if config.network == "optimism-mainnet":
-        raise NetworkNotSupportedError(
-            "optimism-mainnet 上链被禁用 (波 4 约束: 不花真钱). Phase 5 GA 切开."
-        )
+    if config.network in MAINNET_BLOCKED_CHAINS:
+        # mainnet 双重 gate (P1-6 #3, 全 4 链统一): env EAS_ALLOW_MAINNET=1 + config.confirm_mainnet=True.
+        allow = os.environ.get("EAS_ALLOW_MAINNET") == "1"
+        confirm = getattr(config, "confirm_mainnet", False)
+        if not (allow and confirm):
+            raise NetworkNotSupportedError(
+                f"{config.network} 上链被双 gate 阻止: 需 env EAS_ALLOW_MAINNET=1 "
+                "+ config.confirm_mainnet=True. 内测期保持 hard-block."
+            )
 
     # 拿 pending: max_items 显式优先; force=True 拿全部; 否则拿 batch_size 条.
     if max_items is not None:
@@ -628,17 +759,17 @@ def upload_batch(
         tx_hash = _mock_tx_hash(batch_uid)
         method: Literal["mock", "live-readonly", "live-tx"] = "mock"
     else:
-        # optimism-sepolia
+        # P3-5: 任一 testnet (optimism/arbitrum/base/zksync Sepolia).
         if not config.private_key_path:
             # readonly: 仍生成 mock tx, 但 method=live-readonly 表示已校验 RPC 通
-            tx_hash = _mock_tx_hash(f"sepolia-readonly:{batch_uid}")
+            tx_hash = _mock_tx_hash(f"{config.network}-readonly:{batch_uid}")
             method = "live-readonly"
-            # 真 smoke: 校验 RPC chain_id == 11155420.
+            # 真 smoke: 校验 RPC chain_id 跟 config.network 匹配.
             try:
-                _verify_optimism_sepolia_rpc(config.rpc_url)
-            except Exception as e:
+                _verify_testnet_rpc(config.rpc_url, config.network)
+            except Exception:
                 # fail-open: RPC 不通 → 退到 mock, 但 method 标 mock 防误以为已上链.
-                tx_hash = _mock_tx_hash(f"sepolia-rpc-failed:{batch_uid}")
+                tx_hash = _mock_tx_hash(f"{config.network}-rpc-failed:{batch_uid}")
                 method = "mock"
         else:
             # 真发 tx (代码路径就绪, 本 wave 不真跑).
@@ -692,8 +823,9 @@ def upload_batch_with_retry(
     重试条件: EASError / RuntimeError / OSError (网络异常类).
     跳过重试: NetworkNotSupportedError / QueueEmptyError / ConfigError (是 user / config bug).
 
-    退避: 1s, 2s, 4s (base * 2^attempt).
+    退避: 1s, 2s, 4s (base * 2^attempt) + jitter ±20% (P1-6 #5 edge case 修).
     """
+    import random as _random
     import time as _time
 
     last_exc: BaseException | None = None
@@ -713,8 +845,10 @@ def upload_batch_with_retry(
                     on_retry(attempt + 1, e)
                 except Exception:  # noqa: BLE001
                     pass
-            delay = base_delay_sec * (2 ** attempt)
-            _time.sleep(delay)
+            # jitter ±20% 防 thundering herd (多机同时重试 RPC 撞)
+            base = base_delay_sec * (2 ** attempt)
+            delay = base * (1.0 + _random.uniform(-0.2, 0.2))
+            _time.sleep(max(0.05, delay))
     # 三次都失败 — 抛最后一次, queue 未 mark_batched (保持 pending, 下轮重试)
     assert last_exc is not None
     raise EASError(
@@ -722,11 +856,19 @@ def upload_batch_with_retry(
     ) from last_exc
 
 
-def _verify_optimism_sepolia_rpc(rpc_url: str) -> None:
-    """真连 Optimism Sepolia RPC 校验 chain_id (readonly smoke).
+def _verify_testnet_rpc(rpc_url: str, network: str) -> None:
+    """通用: 真连指定 testnet RPC 校验 chain_id (P3-5).
 
-    不发 tx, 不签名, 只 HTTP POST eth_chainId. 失败抛 EASError.
+    network: 'optimism-sepolia' / 'arbitrum-sepolia' / 'base-sepolia' / 'zksync-sepolia'.
+    不发 tx, 不签名, 只 HTTP POST eth_chainId. chain_id 不匹配 → EASError.
     """
+    if network in MAINNET_BLOCKED_CHAINS:
+        raise NetworkNotSupportedError(f"{network} 不允许 readonly verify (mainnet hard gate)")
+
+    expected = CHAIN_ID_BY_NETWORK.get(network)
+    if expected is None:
+        raise EASError(f"未知 testnet '{network}' (P3-5 仅支持 {list(CHAIN_ID_BY_NETWORK.keys())})")
+
     try:
         import httpx  # type: ignore[import-not-found]
     except ImportError as e:
@@ -744,11 +886,16 @@ def _verify_optimism_sepolia_rpc(rpc_url: str) -> None:
 
     chain_id_hex = data.get("result", "0x0")
     chain_id = int(chain_id_hex, 16)
-    if chain_id != OPTIMISM_SEPOLIA_CHAIN_ID:
+    if chain_id != expected:
         raise EASError(
-            f"RPC chain_id 不匹配: 期望 {OPTIMISM_SEPOLIA_CHAIN_ID} (Optimism Sepolia), "
+            f"RPC chain_id 不匹配: 期望 {expected} ({network}), "
             f"实际 {chain_id} ({rpc_url})"
         )
+
+
+def _verify_optimism_sepolia_rpc(rpc_url: str) -> None:
+    """Backward-compat shim (P3-5 之前老调用方). 走 _verify_testnet_rpc."""
+    _verify_testnet_rpc(rpc_url, "optimism-sepolia")
 
 
 def _live_send_batch_tx(
@@ -835,14 +982,32 @@ def verify_attestation_local(queue: AttestQueue, uid: str) -> dict[str, Any]:
     }
 
 
+def _easscan_graphql_url(network: str) -> str:
+    """P3-5: chain → easscan GraphQL endpoint. Mainnet 在调用前已被拒.
+
+    源: https://docs.attest.org/docs/developer-tools/api
+    """
+    mapping = {
+        "optimism-sepolia": "https://optimism-sepolia.easscan.org/graphql",
+        "arbitrum-sepolia": "https://arbitrum-sepolia.easscan.org/graphql",
+        "base-sepolia": "https://base-sepolia.easscan.org/graphql",
+        "zksync-sepolia": "https://zksync-sepolia.easscan.org/graphql",
+    }
+    if network not in mapping:
+        raise EASError(
+            f"未知 testnet network '{network}' (P3-5 仅支持 {list(mapping.keys())})"
+        )
+    return mapping[network]
+
+
 def verify_attestation_onchain(
     uid: str, network: Network = "optimism-sepolia", rpc_url: str | None = None
 ) -> dict[str, Any]:
     """链上 verify: 调 EAS GraphQL 查 attestation (readonly).
 
     本 wave: mock 模式直接返 not-found-onchain (因为没真上链).
-    optimism-sepolia readonly: 调 EAS GraphQL endpoint 查 uid.
-    GraphQL endpoint: https://optimism-sepolia.easscan.org/graphql
+    P3-5: 支持 4 testnet (optimism / arbitrum / base / zksync Sepolia).
+    GraphQL endpoint: easscan 各 chain 子域 (见 _easscan_graphql_url).
 
     返 {"valid": bool, "method": "onchain-graphql", "data": {...}}
     """
@@ -852,9 +1017,9 @@ def verify_attestation_onchain(
             "method": "onchain-graphql",
             "reason": "network=mock, 无链上数据",
         }
-    if network == "optimism-mainnet":
+    if network in MAINNET_BLOCKED_CHAINS:
         raise NetworkNotSupportedError(
-            "optimism-mainnet 查询本 wave 禁用 (避免误以为已部署). Phase 5 切开."
+            f"{network} 查询本 wave 禁用 (避免误以为已部署). Phase 5 切开 (P3-5 跨链)."
         )
 
     try:
@@ -862,7 +1027,7 @@ def verify_attestation_onchain(
     except ImportError as e:
         raise EASError("httpx 未装") from e
 
-    graphql_url = "https://optimism-sepolia.easscan.org/graphql"
+    graphql_url = _easscan_graphql_url(network)
     query = """
     query GetAttestation($uid: String!) {
         attestation(where: {id: $uid}) {
@@ -895,7 +1060,7 @@ def verify_attestation_onchain(
         return {
             "valid": False,
             "method": "onchain-graphql",
-            "reason": "attestation 不在 Optimism Sepolia EAS 上 (未上链或 UID 错)",
+            "reason": f"attestation 不在 {network} EAS 上 (未上链或 UID 错)",
             "raw": data,
         }
     return {
@@ -927,15 +1092,15 @@ def list_history_onchain(
     """
     if network == "mock":
         return []
-    if network == "optimism-mainnet":
-        raise NetworkNotSupportedError("optimism-mainnet 查询本 wave 禁用")
+    if network in MAINNET_BLOCKED_CHAINS:
+        raise NetworkNotSupportedError(f"{network} 查询本 wave 禁用 (P3-5 mainnet hard gate)")
 
     try:
         import httpx  # type: ignore[import-not-found]
     except ImportError as e:
         raise EASError("httpx 未装") from e
 
-    graphql_url = "https://optimism-sepolia.easscan.org/graphql"
+    graphql_url = _easscan_graphql_url(network)
     where: dict[str, Any] = {}
     if attester:
         where["attester"] = {"equals": attester}
@@ -1002,6 +1167,22 @@ __all__ = [
     "OPTIMISM_SEPOLIA_DEFAULT_RPC",
     "EAS_CONTRACT_OPTIMISM_SEPOLIA",
     "EAS_SCHEMA_REGISTRY_OPTIMISM_SEPOLIA",
+    # P3-5 跨链
+    "ARBITRUM_SEPOLIA_CHAIN_ID",
+    "ARBITRUM_SEPOLIA_DEFAULT_RPC",
+    "EAS_CONTRACT_ARBITRUM_SEPOLIA",
+    "BASE_SEPOLIA_CHAIN_ID",
+    "BASE_SEPOLIA_DEFAULT_RPC",
+    "EAS_CONTRACT_BASE_SEPOLIA",
+    "ZKSYNC_SEPOLIA_CHAIN_ID",
+    "ZKSYNC_SEPOLIA_DEFAULT_RPC",
+    "EAS_CONTRACT_ZKSYNC_SEPOLIA",
+    "MAINNET_BLOCKED_CHAINS",
+    "CHAIN_ID_BY_NETWORK",
+    "SHORT_TO_NETWORK",
+    "CHAIN_REGISTRY",
+    "ChainConfig",
+    "resolve_chain",
     "SISOUL_AUDIT_SCHEMA",
     "MOCK_SCHEMA_UID",
     "DEFAULT_BATCH_SIZE",
