@@ -42,4 +42,15 @@ contract SisoulToken is ERC20, ERC20Permit, ERC20Votes, ERC20Capped, AccessContr
     function nonces(address owner) public view override(ERC20Permit, Nonces) returns (uint256) {
         return super.nonces(owner);
     }
+
+    // ── ERC6372 clock 用 timestamp (跟 SisoulGov 对齐, 防 ERC5805FutureLookup) ──
+
+    function clock() public view override returns (uint48) {
+        return uint48(block.timestamp);
+    }
+
+    // solhint-disable-next-line func-name-mixedcase
+    function CLOCK_MODE() public pure override returns (string memory) {
+        return "mode=timestamp";
+    }
 }
