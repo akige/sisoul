@@ -346,17 +346,31 @@ class ArweaveSnapshot:
         sha = hashlib.sha256(encrypted).hexdigest()
         return encrypted, sha, self._key_fingerprint(key)
 
-    # ── 2. IPFS pin ────────────────────────────────────────────────────
+    # ── 2. IPFS pin (Wave A-3: 主路径 kubo, fallback Pinata) ───────────────
 
     def pin_to_ipfs(
         self,
         blob: bytes,
         filename: str = "sisoul-snapshot.enc",
     ) -> Optional[str]:
-        """上 Pinata. 返回 IPFS CID. 失败 → None + 日志.
+        """上 IPFS. 返回 CID. 失败 → None + 日志.
 
-        无 jwt → mock CID (本地 sha256 → fake CID, 仅 dev).
+        Wave A-3 (§32 §B.3): 砍 Pinata SaaS 主路径, 改内嵌 kubo IPFS 节点
+        (sisoul.p2p.ipfs_kubo.IPFSKuboNode), 朋友间互 pin.
+
+        backend 选择 (env SISOUL_IPFS_BACKEND):
+        - "kubo" (推荐): 走内嵌 kubo 子进程. binary 没装 → 自动降 mock.
+        - "pinata" (legacy): 走 Pinata HTTP API (向后兼容).
+        - 默认 "auto" / 未设: 走 Pinata (向后兼容; v1.1+ 切默认 kubo).
+
+        无 PINATA_JWT 且无 kubo → mock CID (sha-based, 仅 dev).
         """
+        backend = os.environ.get("SISOUL_IPFS_BACKEND", "auto").strip().lower()
+
+        if backend == "kubo":
+            return self._pin_via_kubo(blob, filename=filename)
+
+        # auto / pinata / 未设 → legacy Pinata 路径
         if not self.pinata_jwt:
             cid = "mockcid-" + hashlib.sha256(blob).hexdigest()[:46]
             logger.warning("PINATA_JWT 未设, 返回 mock CID: %s", cid)
@@ -377,6 +391,39 @@ class ArweaveSnapshot:
                 return str(cid)
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Pinata pin 失败: %s", e)
+            return None
+
+    def _pin_via_kubo(self, blob: bytes, *, filename: str) -> Optional[str]:
+        """Wave A-3: 走内嵌 kubo. binary 没装 → 自动降 mock.
+
+        懒 import 避免循环 / 让 Pinata-only 部署不需要 ipfs_kubo deps.
+        """
+        try:
+            from sisoul.p2p.ipfs_kubo import get_default_node, IPFSError
+        except ImportError as e:
+            logger.warning("ipfs_kubo 模块 import 失败 (%s), 降 Pinata legacy", e)
+            return None
+
+        node = get_default_node()
+        # mock 模式 (无 binary): 返 mockcid (跟 Pinata mock 一致, 测试可识别)
+        if getattr(node, "mode", None) == "mock":
+            cid = "mockcid-" + hashlib.sha256(blob).hexdigest()[:46]
+            logger.warning("kubo binary 未装, 返 mock CID: %s", cid)
+            return cid
+
+        import asyncio as _aio
+        try:
+            if not node.is_running:
+                _aio.run(node.start())
+            cid = _aio.run(node.add(bytes(blob), pin=True))
+            # 后台 DHT provide (让公网能发现; 失败非致命)
+            try:
+                _aio.run(node.dht_provide(cid))
+            except Exception:
+                pass
+            return cid
+        except (IPFSError, Exception) as e:  # noqa: BLE001
+            logger.warning("kubo IPFS pin 失败 (%s), 返 None", e)
             return None
 
     # ── 3. Arweave 上传 (v1.0-decentralized: 走 Bundlr/Turbo) ──────────
