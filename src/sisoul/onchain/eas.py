@@ -856,11 +856,34 @@ def upload_batch_with_retry(
     ) from last_exc
 
 
+# v1.0-decentralized #4 (Helios light client) · Wave A agent-1 · 2026-05-19:
+# EAS sepolia testnet RPC 调用优先走 sisoul.rpc.HeliosClient (trustless, Merkle proof).
+# helios 0.11.1 不原生支持 op-sepolia/arbitrum/zksync, 但支持 base-sepolia. 不支持的链
+# 自动退到公共 RPC + 警告 banner (向后兼容). 用户可设
+# SISOUL_HELIOS_DISABLE=1 强制 legacy 公共 RPC 路径 (回归测试 / 调试用).
+
+_EAS_NETWORK_TO_HELIOS_CHAIN: dict[str, str] = {
+    # helios 0.11.1 原生支持: base-sepolia 可走 trustless
+    "base-sepolia": "base-sepolia",
+    # 不支持的 (op-sepolia / arbitrum-sepolia / zksync-sepolia): map "" → 直走公共 RPC
+    "optimism-sepolia": "",
+    "arbitrum-sepolia": "",
+    "zksync-sepolia": "",
+}
+
+
 def _verify_testnet_rpc(rpc_url: str, network: str) -> None:
-    """通用: 真连指定 testnet RPC 校验 chain_id (P3-5).
+    """通用: 真连指定 testnet RPC 校验 chain_id (P3-5, v1.0-decentralized #4).
 
     network: 'optimism-sepolia' / 'arbitrum-sepolia' / 'base-sepolia' / 'zksync-sepolia'.
-    不发 tx, 不签名, 只 HTTP POST eth_chainId. chain_id 不匹配 → EASError.
+
+    路径优先级 (v1.0-decentralized):
+    1. SISOUL_HELIOS_DISABLE=1 → 跳过 helios, 直走公共 RPC (legacy).
+    2. helios 全局 client 已 start 且 network 在原生支持 (base-sepolia) →
+       走 helios trustless. ChainStatus.mode='helios'.
+    3. fallback → 直 httpx 公共 RPC + warn banner ("trusted, not trustless").
+
+    不发 tx, 不签名, 只 eth_chainId. chain_id 不匹配 → EASError.
     """
     if network in MAINNET_BLOCKED_CHAINS:
         raise NetworkNotSupportedError(f"{network} 不允许 readonly verify (mainnet hard gate)")
@@ -869,27 +892,59 @@ def _verify_testnet_rpc(rpc_url: str, network: str) -> None:
     if expected is None:
         raise EASError(f"未知 testnet '{network}' (P3-5 仅支持 {list(CHAIN_ID_BY_NETWORK.keys())})")
 
-    try:
-        import httpx  # type: ignore[import-not-found]
-    except ImportError as e:
-        raise EASError(
-            "httpx 未装. pip install 'sisoul[daemon]' 或 'sisoul[onchain]'."
-        ) from e
+    chain_id: int | None = None
+    verified_mode: str = "trusted"
 
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []}
-    try:
-        r = httpx.post(rpc_url, json=payload, timeout=10.0)
-        r.raise_for_status()
-        data = r.json()
-    except Exception as e:
-        raise EASError(f"RPC 调用失败 ({rpc_url}): {e}") from e
+    # Path 1: helios trustless (if enabled + chain natively supported)
+    helios_disabled = os.environ.get("SISOUL_HELIOS_DISABLE") == "1"
+    helios_chain = _EAS_NETWORK_TO_HELIOS_CHAIN.get(network, "")
+    if not helios_disabled and helios_chain:
+        try:
+            from sisoul.rpc.helios_client import get_default_client
+            client = get_default_client()
+            if client is not None:
+                s = client.status(helios_chain)
+                if isinstance(s, dict):  # 防御 (full status() 返 dict)
+                    s = s.get(helios_chain)
+                if s and s.in_sync and s.mode == "helios":
+                    try:
+                        hex_id = client.call_sync(helios_chain, "eth_chainId", [])
+                        chain_id = int(hex_id, 16)
+                        verified_mode = "trustless"
+                    except Exception as e:  # noqa: BLE001
+                        import logging as _log
+                        _log.getLogger(__name__).warning(
+                            "helios eth_chainId(%s) 失败 (%s), fallback 公共 RPC",
+                            helios_chain, e
+                        )
+        except ImportError:
+            pass  # sisoul.rpc 还没装好
 
-    chain_id_hex = data.get("result", "0x0")
-    chain_id = int(chain_id_hex, 16)
+    # Path 2: fallback 公共 RPC (跟原 behaviour 一致)
+    if chain_id is None:
+        try:
+            import httpx  # type: ignore[import-not-found]
+        except ImportError as e:
+            raise EASError(
+                "httpx 未装. pip install 'sisoul[daemon]' 或 'sisoul[onchain]'."
+            ) from e
+
+        payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []}
+        try:
+            r = httpx.post(rpc_url, json=payload, timeout=10.0)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            raise EASError(f"RPC 调用失败 ({rpc_url}): {e}") from e
+
+        chain_id_hex = data.get("result", "0x0")
+        chain_id = int(chain_id_hex, 16)
+        verified_mode = "trusted"
+
     if chain_id != expected:
         raise EASError(
             f"RPC chain_id 不匹配: 期望 {expected} ({network}), "
-            f"实际 {chain_id} ({rpc_url})"
+            f"实际 {chain_id} (mode={verified_mode}, rpc={rpc_url})"
         )
 
 
