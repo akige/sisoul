@@ -10,6 +10,39 @@ to four public-facing GitHub repos.
 | `clean-room-build.sh` | rsync → desensitize → git init → `gh repo create` |
 | `desensitize.py` | Regex-based redaction + 2-pass verification + report |
 | `desensitize-blacklist.yaml` | Patterns: usernames, paths, hosts, Tailscale IPs, API key prefixes |
+| `build-binary.sh` | PyInstaller → single-file `sisoul` binary (≤50MB) per OS/ARCH |
+| `sigstore_sign.sh` | cosign sign-blob → `.sig` + `.bundle` (Sigstore bundle format) |
+| `verify.sh` | cosign verify-blob, offline-friendly (used by install.sh + CI) |
+| `install.sh` | One-line installer: `curl -sSL https://sisoul.io/install.sh \| sh` |
+| `sisoul-entry.py` | PyInstaller entry shim, calls `sisoul.cli:app` |
+| `cosign.pub` | Test public key (checked-in for `verify.sh` default path) |
+
+Test private key lives in `ops/release/.testkeys/cosign.key.test` and is
+gitignored; the matching public key (`cosign.pub`) is checked in so that
+anyone can replay the test verification flow.
+
+## Wave A #11 — Sigstore signed release
+
+```bash
+# 1. Build single-file binary for current host
+ops/release/build-binary.sh
+# → ops/release/dist/sisoul-1.0.0+internal-darwin-arm64 (23MB)
+
+# 2. Sign with test keypair (auto-generated on first run)
+ops/release/sigstore_sign.sh ops/release/dist/sisoul-1.0.0+internal-darwin-arm64
+# → .sig + .bundle alongside the binary
+
+# 3. Verify offline
+ops/release/verify.sh ops/release/dist/sisoul-1.0.0+internal-darwin-arm64
+# → "Verified OK"
+
+# 4. End-user install (one-liner)
+curl -sSL https://sisoul.io/install.sh | sh
+# Downloads binary + bundle + pubkey, cosign verify-blob, install ~/.local/bin/sisoul
+```
+
+ENS contenthash mirror (`sisoul-cli.eth` → IPFS CID) is wired by Wave B
+issues #1 + #8; until then `install.sh` falls back to GitHub releases only.
 
 ## Repo Split
 
