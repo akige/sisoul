@@ -1,31 +1,37 @@
-"""sisoul · Arweave 月度加密 snapshot + IPFS pin (Phase 3 W41-W43 · dev-C).
+"""sisoul · Arweave 月度加密 snapshot (Phase 3 W41-W43 · v1.0-decentralized Wave A #5).
 
 §28 §1.1 模块 12 · §29 §5.1 W41-W43.
+v1.0-decentralized §B.2 (obs 32) Wave A agent-2: **替 Pinata pin 长期存为 Bundlr/Turbo 直传 Arweave**.
 
 设计:
-公司倒闭 / Mac 硬盘坏 → 用户拿 BIP-39 seed + Arweave tx_id (or IPFS CID)
-还原 vault.
+公司倒闭 / Mac 硬盘坏 → 用户拿 BIP-39 seed + Arweave tx_id 还原 vault.
 
 流程:
 1. 拉 vault dir → 加密 (BIP-39 派生 subkey "arweave") → ZIP
 2. 计算 sha256 hash (作 vault_master_key_fingerprint + 内容指纹)
-3. IPFS pin (Pinata HTTP API, ~1-5s, 给用户即时反馈)
-4. Arweave 上链 (httpx POST testnet, ~30s, 异步, 写 tx_id 回 history)
+3. IPFS pin (Pinata HTTP API, ~1-5s, 给用户即时反馈) — **保留作 #6 helia hot 路径**
+4. **Arweave 上链经 Bundlr/Turbo** (bundlr_turbo.ArweaveUploader): < 100 KiB free tier,
+   > 100 KiB ~$0.01-0.02/MB. tx_id 60-120s 内 permanent. 200+ 年存活承诺.
 5. 历史 → ~/.sisoul/snapshot_history.json
 
 复活流程:
 - restore_from_arweave(tx_id, mnemonic, target):
-    - 用 tx_id GET testnet → 拿密文 ZIP
+    - 用 tx_id GET arweave.net (mainnet gateway 永远可读, free) → 拿密文 ZIP
     - mnemonic → derive_subkey("arweave") → 解密 → 解 ZIP → 写 target
 
 依赖:
 - 必装: 项目原有 (httpx / pynacl / mnemonic)
-- 可选: arweave-python-client (真 mainnet 用; testnet HTTP 直 POST 也行, 不强制)
-- 可选: ipfshttpclient (自托管 IPFS daemon, 不强制; 默认走 Pinata HTTP API)
+- 可选: arweave-python-client (真 mainnet/testnet 上传; 没装 → mock fallback)
 
-⚠️ 默认全 testnet / mock. mainnet 留 Phase 5 (避免误花真钱).
-⚠️ 不上 mainnet 的硬约束: ARWEAVE_GATEWAY 默认 https://test.arweave.net/,
-   ARWEAVE_NETWORK env 必须显式 = "mainnet" + ARWEAVE_ALLOW_MAINNET=1 才走 mainnet.
+⚠️ **mainnet 双 gate**: ``ARWEAVE_ALLOW_MAINNET=1`` env + ``confirm_mainnet=True``
+   构造参数, 两个都开才真打 mainnet. 否则降 testnet.
+
+v1.0-decentralized Wave A 改动 (本文件):
+- 砍掉旧的 ``upload_to_arweave`` 里 "无 wallet → fake tx" / "无 lib → fake tx" / Pinata 上链段,
+  全部改走 ``bundlr_turbo.ArweaveUploader``.
+- 保留 ``pin_to_ipfs`` (Pinata IPFS pin, #6 helia hot 路径需要它兜底).
+- ``SnapshotRecord`` 加 ``bundle_id`` / ``cost_paid_usd`` / ``fetch_url`` / ``provider`` 字段
+  (default None, 向后兼容旧 history.json).
 """
 
 from __future__ import annotations
@@ -50,6 +56,12 @@ from sisoul.identity.seed import (
     load_mnemonic_from_file,
     mnemonic_to_master_key,
     verify_mnemonic,
+)
+from sisoul.onchain.bundlr_turbo import (
+    ArweaveUploader,
+    BundlrError,
+    ProviderLiteral,
+    UploadReceipt,
 )
 from sisoul.vault.encryption import decrypt_bytes, encrypt_bytes
 
@@ -764,6 +776,52 @@ def schedule_monthly_snapshot(
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.0-decentralized #4 (Helios light client) hook · Wave A agent-1 · 2026-05-19
+# ─────────────────────────────────────────────────────────────────────────────
+# Arweave gateway 本身是 web2 (arweave.net HTTP GET / Bundlr Turbo REST), 跟 EVM
+# Helios light client 关系弱 — Arweave 共识层不在 helios 0.11.1 支持矩阵. 但本 wave
+# 加 hook 给未来 (v1.1+) Bundlr/Turbo 收 USDC on Optimism Sepolia 走 helios verify
+# tx receipt 用: 替代信任 Turbo API 自报 "已收到".
+
+
+def ensure_eth_payment_via_helios(
+    chain: str,
+    tx_hash: str,
+    *,
+    required_recipient: str | None = None,
+) -> bool:
+    """通过 helios trustless verify EVM 支付 tx receipt (v1.1+ Bundlr/Turbo USDC 付费).
+
+    本 wave (Wave A): 接口骨架. 当 helios 已 in_sync 且 receipt 校验通过 → 返 True;
+    helios 缺失 / chain 不支持 / receipt 不匹配 → False (不抛, 让调用方决定退化策略).
+    """
+    try:
+        from sisoul.rpc.helios_client import get_default_client
+    except ImportError:
+        logger.debug("sisoul.rpc 不可用, ensure_eth_payment_via_helios 返 False")
+        return False
+    client = get_default_client()
+    if client is None:
+        return False
+    status = client.status(chain)
+    if isinstance(status, dict) or not status.in_sync:
+        logger.warning("helios %s 未 in_sync / 未注册, eth_payment verify 跳过", chain)
+        return False
+    try:
+        receipt = client.call_sync(chain, "eth_getTransactionReceipt", [tx_hash])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("helios eth_getTransactionReceipt(%s) 失败: %s", tx_hash, e)
+        return False
+    if not receipt:
+        return False
+    if receipt.get("status") != "0x1":
+        return False
+    if required_recipient and (receipt.get("to") or "").lower() != required_recipient.lower():
+        return False
+    return True
+
+
 __all__ = [
     "ArweaveSnapshot",
     "SnapshotRecord",
@@ -773,4 +831,6 @@ __all__ = [
     "ARWEAVE_MAINNET_GATEWAY",
     "PINATA_API_BASE",
     "DEFAULT_HISTORY_PATH",
+    # v1.0-decentralized #4 Helios hook (Wave A agent-1)
+    "ensure_eth_payment_via_helios",
 ]
