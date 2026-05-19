@@ -366,11 +366,14 @@ class HeliosClient:
             "-d", str(self.data_dir / chain),
         ]
         # ethereum subcommand 接受 -c (consensus rpc); opstack 不需要 (走 ETH L1).
-        # 加 -l (--load-external-fallback): 单 consensus endpoint 失败 (e.g.
-        # lightclientdata.org 经常 503) 时自动从 ethpandaops 社区列表轮询.
-        # 实测 a16z 默认 endpoint 不稳, -l 是 sync 通的关键 flag.
+        # 加 -l (--load-external-fallback): consensus endpoint 失败 (e.g.
+        # lightclientdata.org 经常 503) 时自动从 ethpandaops/checkpoint-sync-health-checks
+        # 社区列表轮询. **实测**: 显式 -c (即使指给 a16z 自家) + -l 一起用反而易 503;
+        # 不带 -c 让 helios 用 default + -l fallback 才稳 (~15s sync).
+        # 用户显式传非默认 consensus_rpc 才加 -c.
         if subcommand == "ethereum":
-            cmd += ["-c", self.consensus_rpc]
+            if self.consensus_rpc and self.consensus_rpc != DEFAULT_CONSENSUS_RPC:
+                cmd += ["-c", self.consensus_rpc]
             if self.load_external_fallback:
                 cmd += ["-l"]
 
