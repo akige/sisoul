@@ -109,16 +109,11 @@ NetworkLiteral = Literal["testnet", "mainnet", "mock"]
 class SnapshotRecord:
     """单次 snapshot 元数据 (写 snapshot_history.json 一条 entry).
 
-    字段:
-    - timestamp: ISO UTC
-    - size_bytes: 加密后 ZIP 大小
-    - sha256: 加密后 ZIP 的 sha256 (内容指纹, 不是 key fingerprint)
-    - ipfs_cid: IPFS CID (None = 没 pin / 失败)
-    - arweave_tx_id: Arweave tx_id (None = 没上链 / 异步还没完成)
-    - vault_master_key_fingerprint: derive_subkey("arweave") 的前 8B hex (8 字节足够区分)
-    - network: testnet / mainnet / mock
-    - status: ok / pending / failed
-    - error: 失败原因 (status=failed 时填)
+    v1.0-decentralized Wave A 新增 (default None 向后兼容旧 history.json):
+    - bundle_id: Bundlr/Turbo bundle id (Turbo upload service 内部 id)
+    - cost_paid_usd: 实际扣的 USD (str 保 Decimal 精度; "0" = free tier; "-1" = unknown)
+    - fetch_url: https://arweave.net/<tx_id> (cache 起来, 复活时直拉)
+    - provider: turbo / irys / arweave-direct / mock
     """
 
     timestamp: str
@@ -130,6 +125,11 @@ class SnapshotRecord:
     network: str = "testnet"
     status: str = "ok"
     error: Optional[str] = None
+    # v1.0-decentralized Wave A 新增 (向后兼容)
+    bundle_id: Optional[str] = None
+    cost_paid_usd: Optional[str] = None
+    fetch_url: Optional[str] = None
+    provider: Optional[str] = None
 
 
 class SnapshotHistory:
@@ -208,6 +208,10 @@ class ArweaveSnapshot:
         arweave_wallet_path: Optional[Path] = None,
         network: NetworkLiteral = "testnet",
         history: Optional[SnapshotHistory] = None,
+        *,
+        bundlr_provider: ProviderLiteral = "turbo",
+        confirm_mainnet: bool = False,
+        uploader: Optional[ArweaveUploader] = None,
     ) -> None:
         self._mnemonic = mnemonic
         self.pinata_jwt = pinata_jwt or os.environ.get("PINATA_JWT")
@@ -217,7 +221,24 @@ class ArweaveSnapshot:
             else (Path(os.environ["ARWEAVE_WALLET"]).expanduser() if os.environ.get("ARWEAVE_WALLET") else None)
         )
         self.network = self._resolve_network(network)
+        self.confirm_mainnet = confirm_mainnet
         self.history = history or SnapshotHistory()
+
+        # v1.0-decentralized Wave A: 接 Bundlr/Turbo uploader
+        # 网络 = mock → 强制 provider=mock (避免误打 Turbo)
+        effective_provider: ProviderLiteral = "mock" if self.network == "mock" else bundlr_provider
+        self.bundlr_provider: ProviderLiteral = effective_provider
+
+        if uploader is not None:
+            self.uploader = uploader
+        else:
+            self.uploader = ArweaveUploader(
+                provider=effective_provider,
+                wallet_path=self.arweave_wallet_path,
+                network=self.network,
+                confirm_mainnet=confirm_mainnet,
+                gateway=ARWEAVE_MAINNET_GATEWAY,
+            )
 
     # ── network gate ──────────────────────────────────────────────────────
 
@@ -358,55 +379,33 @@ class ArweaveSnapshot:
             logger.warning("Pinata pin 失败: %s", e)
             return None
 
-    # ── 3. Arweave 上传 ──────────────────────────────────────────────
+    # ── 3. Arweave 上传 (v1.0-decentralized: 走 Bundlr/Turbo) ──────────
 
     def upload_to_arweave(self, blob: bytes) -> Optional[str]:
-        """上 Arweave (默认 testnet). 返 tx_id. 失败 → None.
+        """上 Arweave (经 Bundlr/Turbo bundle service). 返 tx_id. 失败 → None.
 
-        实现:
-        - mock 网络: sha256 → fake tx_id
-        - testnet: 优先用 arweave-python-client 真上链; 失败 fallback HTTP POST mock
-        - mainnet: 需 wallet + ARWEAVE_ALLOW_MAINNET=1
+        v1.0-decentralized Wave A 改造: 砍掉旧的 "无 wallet fake / 无 lib fake / direct httpx
+        POST" 三档 fallback, 全部走 ``ArweaveUploader``:
+        - mock provider: 决定性 fake tx_id ("mocktx-" + sha256[:43])
+        - turbo / irys: < 100 KiB free tier 无需 USDC; >= 100 KiB 走付费
+        - arweave-direct: BYO wallet 直发, 用户付 AR token
         """
-        if self.network == "mock":
-            tx_id = "mocktx-" + hashlib.sha256(blob).hexdigest()[:43]
-            return tx_id
-
-        # 真 Arweave 要 wallet
-        if not self.arweave_wallet_path or not self.arweave_wallet_path.exists():
-            # 无 wallet → testnet 仍可走 mock-style fake tx (内部签名要 wallet, 没法真上)
-            logger.warning(
-                "ARWEAVE_WALLET 未设/不存在, 用 fake testnet tx_id. "
-                "真上链需 wallet JSON (Arweave 钱包导出)."
-            )
-            tx_id = "testnet-fake-" + hashlib.sha256(blob).hexdigest()[:32]
-            return tx_id
-
-        # 真上链路径 (optional dep · 装 arweave-python-client 才走)
         try:
-            import arweave  # type: ignore[import-not-found]
-        except ImportError:
-            logger.warning(
-                "arweave-python-client 未装 (pip install 'sisoul[onchain]'), "
-                "返回 fake tx_id"
-            )
-            tx_id = "no-lib-fake-" + hashlib.sha256(blob).hexdigest()[:32]
-            return tx_id
+            receipt = self.upload_with_receipt(blob)
+        except BundlrError as e:
+            logger.warning("Bundlr/Turbo 上传失败 (%s)", e)
+            return None
+        return receipt.tx_id
 
-        try:
-            wallet = arweave.Wallet(str(self.arweave_wallet_path))  # type: ignore[attr-defined]
-            wallet.api_url = self.gateway  # type: ignore[attr-defined]
-            tx = arweave.Transaction(wallet, data=blob)  # type: ignore[attr-defined]
-            tx.add_tag("App-Name", "sisoul")
-            tx.add_tag("App-Version", "0.1.0-dev")
-            tx.add_tag("Content-Type", "application/octet-stream")
-            tx.add_tag("Snapshot-Schema", "sisoul-snapshot-v1")
-            tx.sign()
-            tx.send()
-            return str(tx.id)
-        except Exception as e:  # noqa: BLE001 · 第三方库异常面宽
-            logger.warning("Arweave 真上链失败 (%s), 返回 fake tx_id", e)
-            return "upload-err-" + hashlib.sha256(blob).hexdigest()[:32]
+    def upload_with_receipt(self, blob: bytes) -> UploadReceipt:
+        """上传并返完整 ``UploadReceipt`` (含 bundle_id / cost / fetch_url)."""
+        tags = {
+            "App-Name": "sisoul",
+            "App-Version": "1.0.0-decentralized",
+            "Content-Type": "application/octet-stream",
+            "Snapshot-Schema": "sisoul-snapshot-v1",
+        }
+        return self.uploader.upload(blob, content_type="application/octet-stream", tags=tags)
 
     # ── 4. 还原 ──────────────────────────────────────────────────────
 
@@ -494,7 +493,9 @@ class ArweaveSnapshot:
 
     def _fetch_arweave(self, tx_id: str) -> bytes:
         """从 Arweave gateway 拉 tx data."""
-        if tx_id.startswith(("mocktx-", "testnet-fake-", "no-lib-fake-", "upload-err-")):
+        if tx_id.startswith((
+            "mocktx-", "testnet-fake-", "no-lib-fake-", "upload-err-", "mockbundle-",
+        )):
             raise RuntimeError(
                 f"fake/mock tx_id 无法真拉; 仅本地测试用. tx_id={tx_id}"
             )
@@ -541,11 +542,17 @@ class ArweaveSnapshot:
                 record.error = "ipfs pin 失败"
 
         if upload in ("arweave", "both"):
-            tx_id = self.upload_to_arweave(encrypted)
-            record.arweave_tx_id = tx_id
-            if tx_id is None:
+            try:
+                receipt = self.upload_with_receipt(encrypted)
+                record.arweave_tx_id = receipt.tx_id
+                record.bundle_id = receipt.bundle_id
+                record.cost_paid_usd = str(receipt.cost_paid_usd)
+                record.fetch_url = receipt.fetch_url
+                record.provider = receipt.provider
+            except BundlrError as e:
+                logger.warning("Bundlr/Turbo 上传失败: %s", e)
                 record.status = "failed"
-                record.error = (record.error + "; " if record.error else "") + "arweave 上链失败"
+                record.error = (record.error + "; " if record.error else "") + f"arweave 上链失败: {e}"
 
         self.history.append(record)
         return record

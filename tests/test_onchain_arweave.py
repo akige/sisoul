@@ -220,14 +220,19 @@ def test_upload_to_arweave_mock_network(client: ArweaveSnapshot) -> None:
     assert tx is not None and tx.startswith("mocktx-")
 
 
-def test_upload_to_arweave_testnet_no_wallet_returns_fake(
+def test_upload_to_arweave_testnet_no_wallet_returns_none(
     mnemonic: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """v1.0-decentralized Wave A: 改造后 testnet 无 wallet → None (Bundlr 拒签).
+
+    旧版会返 'testnet-fake-...' fake tx; 新版砍掉 fake fallback, 强制走 Bundlr/Turbo
+    真路径或 mock provider. 没 wallet 又非 mock → BundlrError → None.
+    """
     monkeypatch.delenv("ARWEAVE_WALLET", raising=False)
     monkeypatch.delenv("PINATA_JWT", raising=False)
-    client = ArweaveSnapshot(mnemonic=mnemonic, network="testnet")
+    client = ArweaveSnapshot(mnemonic=mnemonic, network="testnet", bundlr_provider="turbo")
     tx = client.upload_to_arweave(b"data")
-    assert tx is not None and tx.startswith("testnet-fake-")
+    assert tx is None
 
 
 def test_mainnet_gated_without_env_flag_downgrades(
