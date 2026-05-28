@@ -36,6 +36,22 @@ from sisoul.identity.seed import (
     verify_mnemonic,
 )
 
+# Wave B' P0-3: did:key 轻量化 (W3C-CCG did:key method).
+from sisoul.identity.did_key import (
+    DID_KEY_SCHEME,
+    DidKey,
+    DidKeyError,
+    InvalidDidKeyFormatError,
+    UnsupportedMulticodecError,
+    decode_did_key,
+    derive_did_key_keypair,
+    did_key_to_pubkey,
+    encode_did_key,
+    generate_did_key,
+    generate_did_key_from_master,
+    verify_did_key,
+)
+
 __all__ = [
     "DEFAULT_SEED_FILE",
     "InvalidMnemonicError",
@@ -46,4 +62,16 @@ __all__ = [
     "mnemonic_to_master_key",
     "save_mnemonic_to_file",
     "verify_mnemonic",
+    "DID_KEY_SCHEME",
+    "DidKey",
+    "DidKeyError",
+    "InvalidDidKeyFormatError",
+    "UnsupportedMulticodecError",
+    "decode_did_key",
+    "derive_did_key_keypair",
+    "did_key_to_pubkey",
+    "encode_did_key",
+    "generate_did_key",
+    "generate_did_key_from_master",
+    "verify_did_key",
 ]
