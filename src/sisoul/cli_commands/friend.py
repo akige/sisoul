@@ -31,6 +31,10 @@ from sisoul.friend.relationship import (
     compute_strong_tie_score,
     resolve_own_did,
 )
+from sisoul.identity.did_key import (
+    DidKeyError,
+    decode_did_key,
+)
 
 friend_app = typer.Typer(
     name="friend",
@@ -301,6 +305,106 @@ def cmd_info(
         typer.echo(f"  manual_override:     {score.manual_override}")
     typer.echo("--- 互惠 ledger 摘要 ---")
     typer.echo(f"  {ledger_summary}")
+
+
+# ── friend add (Wave B' P0-3 · 加 did:key friend, 轻量, 无 EAS attestation) ──
+
+
+def _did_key_friends_path(vault_dir: Optional[Path]) -> Path:
+    if vault_dir:
+        return Path(vault_dir) / "identity" / "didkey_friends.json"
+    return Path.home() / ".sisoul" / "identity" / "didkey_friends.json"
+
+
+def _load_did_key_friends(vault_dir: Optional[Path]) -> list[dict]:
+    fp = _did_key_friends_path(vault_dir)
+    if not fp.exists():
+        return []
+    try:
+        return json.loads(fp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_did_key_friends(entries: list[dict], vault_dir: Optional[Path]) -> Path:
+    fp = _did_key_friends_path(vault_dir)
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fp.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    return fp
+
+
+@friend_app.command("add")
+def cmd_add(
+    friend_did: str = typer.Argument(
+        ...,
+        help=(
+            "朋友 did:key:z... (W3C-CCG did:key, X25519 pubkey). "
+            "对 did:sisoul:* 用 'sisoul friend request'."
+        ),
+    ),
+    nickname: str = typer.Option(
+        "", "--nickname", "-n", help="本地昵称 (可选, 仅本地显示)"
+    ),
+    vault_dir: Optional[Path] = typer.Option(
+        None, "--vault-dir", help="vault 目录 (默认 ~/.sisoul/)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
+) -> None:
+    """加 did:key 朋友 (轻量本地, 不发 EAS attestation, 不上链).
+
+    Wave B' P0-3: did:key 朋友走 X25519 libsodium box 直接加密通信,
+    无需双向 attestation. 跟 `friend request` (EAS attestation 重路径) 共存.
+    """
+    try:
+        dk = decode_did_key(friend_did)
+    except DidKeyError as e:
+        typer.echo(f"ERROR: did:key 格式错误: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    entries = _load_did_key_friends(vault_dir)
+    existing_idx = None
+    for i, e in enumerate(entries):
+        if e.get("did") == dk.did:
+            existing_idx = i
+            break
+
+    from datetime import datetime, timezone
+
+    record = {
+        "did": dk.did,
+        "pubkey_hex": dk.pubkey.hex(),
+        "key_type": dk.key_type,
+        "nickname": nickname,
+        "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "method": "did:key",
+    }
+
+    if existing_idx is not None:
+        entries[existing_idx] = {**entries[existing_idx], **record}
+        msg = "updated"
+    else:
+        entries.append(record)
+        msg = "added"
+    fp = _save_did_key_friends(entries, vault_dir)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"action": msg, "record": record, "saved_to": str(fp)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    typer.echo(f"OK did:key friend {msg}: {dk.did}")
+    typer.echo(f"  pubkey (hex): {dk.pubkey.hex()[:32]}... ({dk.key_type})")
+    if nickname:
+        typer.echo(f"  nickname: {nickname}")
+    typer.echo(f"  saved: {fp}")
+    typer.echo(
+        "  note: did:key friend 走 libsodium box 直接加密, 无 EAS attestation. "
+        "如需 EAS 双向 attestation 用 'sisoul friend request'."
+    )
 
 
 __all__ = ["friend_app"]
