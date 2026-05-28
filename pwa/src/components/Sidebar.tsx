@@ -15,6 +15,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/advanced", label: "Advanced", icon: "◆" },
   { path: "/friends", label: "Friends", icon: "◍" },
   { path: "/skills", label: "Skills", icon: "◈" },
+  { path: "/borrow", label: "Borrow", icon: "↙" },
+  { path: "/lend", label: "Lend", icon: "↗" },
 ];
 
 export default function Sidebar() {
