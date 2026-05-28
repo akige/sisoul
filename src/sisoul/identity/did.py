@@ -333,17 +333,21 @@ def resolve_did(
     *,
     registry_path: Path | None = None,
 ) -> DID:
-    """根据 ``did:sisoul:<handle>`` 或 ``<handle>.sisoul.eth`` 查本地 registry.
+    """根据 did:sisoul:<handle>, <handle>.sisoul.eth, 或 did:key:z... 解析.
 
-    Phase 3 RC 加链上 fallback: 本地 miss → 查 Sepolia ENS resolver TEXT record.
+    Wave B' P0-3: 新增 did:key 路径 (本地决定性派生, 无 registry).
     """
+    if did_or_ens.startswith("did:key:"):
+        return _resolve_did_key(did_or_ens)
+
     if did_or_ens.startswith("did:sisoul:"):
         handle = did_or_ens[len("did:sisoul:"):]
     elif did_or_ens.endswith(f".{SISOUL_ENS_ROOT}"):
         handle = did_or_ens[: -len(f".{SISOUL_ENS_ROOT}")]
     else:
         raise DIDError(
-            f"无法解析: '{did_or_ens}'. 接受 'did:sisoul:<handle>' 或 '<handle>.{SISOUL_ENS_ROOT}'"
+            f"无法解析: '{did_or_ens}'. 接受 'did:sisoul:<handle>', "
+            f"'<handle>.{SISOUL_ENS_ROOT}', 或 'did:key:z...'"
         )
     handle = validate_handle(handle)
     registry = load_registry(registry_path)
@@ -351,6 +355,30 @@ def resolve_did(
         if entry.get("handle") == handle:
             return DID.from_dict(dict(entry))
     raise DIDNotFoundError(f"DID 未找到: {did_or_ens} (本地 registry 无 handle={handle})")
+
+
+def _resolve_did_key(did_key_str: str) -> DID:
+    """did:key:z... → DID 对象 (无 registry, 完全本地解析).
+
+    handle 字段填 identifier (z... multibase 串). did_string 返 'did:key:z...' 正确.
+    method='key', network='mock'. Wave B' P0-3.
+    """
+    from sisoul.identity.did_key import (
+        decode_did_key,
+        InvalidDidKeyFormatError,
+        UnsupportedMulticodecError,
+    )
+    try:
+        dk = decode_did_key(did_key_str)
+    except (InvalidDidKeyFormatError, UnsupportedMulticodecError) as e:
+        raise DIDError(f"did:key 解析失败: {e}") from e
+
+    return DID(
+        handle=dk.identifier,
+        public_key=dk.identifier,
+        network="mock",
+        method="key",
+    )
 
 
 # ── 本地 registry ────────────────────────────────────────────────────────────
