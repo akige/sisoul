@@ -13,7 +13,7 @@ const PWA_DIR = resolve(__dirname, "../..");
 const ROUTES_DIR = resolve(PWA_DIR, "src/routes");
 const APP_TSX = resolve(PWA_DIR, "src/App.tsx");
 
-const ROUTES = ["Vault", "Goals", "ChatHistory", "Settings", "Advanced", "Friends", "Skills"];
+const ROUTES = ["Vault", "Goals", "ChatHistory", "Settings", "Advanced", "Friends", "Skills", "Borrow", "Lend"];
 
 describe("route TSX files exist", () => {
   for (const route of ROUTES) {

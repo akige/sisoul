@@ -29,6 +29,8 @@ export default defineConfig({
           if (id.includes("/routes/Advanced")) return "Advanced";
           if (id.includes("/routes/Friends")) return "Friends";
           if (id.includes("/routes/Skills")) return "Skills";
+          if (id.includes("/routes/Borrow")) return "Borrow";
+          if (id.includes("/routes/Lend")) return "Lend";
         },
       },
     },
