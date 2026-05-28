@@ -155,6 +155,13 @@ def create_app() -> FastAPI:
     except Exception as e:
         print(f"[daemon] dao_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Wave B' P1-1 routes (notify / 在线状态 / 推送 · agent-B3) ────────────
+    try:
+        from sisoul.daemon_routes.notify import notify_router
+        app.include_router(notify_router)
+    except Exception as e:
+        print(f'[daemon] notify_router import failed: {type(e).__name__}: {e}', file=sys.stderr)
+
     return app
 
 

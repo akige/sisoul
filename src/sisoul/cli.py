@@ -237,5 +237,13 @@ def daemon(
     run_daemon(host=host, port=port)
 
 
+
+
+
+# ── notify (Wave B' P1-1, 推送 / 在线状态 · agent-B3) ────────────────────────
+from sisoul.cli_commands.notify import notify_app  # noqa: E402
+
+app.add_typer(notify_app, name="notify")
+
 if __name__ == "__main__":
     app()
