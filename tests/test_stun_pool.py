@@ -333,11 +333,14 @@ async def test_two_local_daemons_stun_reflexive_consistent():
     r2 = await probe_stun("stun:stun.cloudflare.com:3478", timeout_sec=5.0)
     if not (r1.alive and r2.alive):
         pytest.skip(f"STUN 不可达: r1={r1.error} r2={r2.error}")
-    # 同一台机器外网 IP 一致 (公网 IP 同)
-    assert r1.reflexive_ip == r2.reflexive_ip, (
-        f"两次外网 IP 不一致: {r1.reflexive_ip} vs {r2.reflexive_ip} "
-        f"(可能多出口 / 同时 IPv4/IPv6 不一致, 本 smoke 不适用此环境)"
-    )
+    # 同一台机器外网 IP **大概率** 一致, 但多 ISP / Tailscale exit-node /
+    # IPv4-IPv6 双栈 / VPN 等场景会拿到不同公网 IP (mac 实测多出口 154.x vs 222.x).
+    # 改 skip 而非 fail, 因为这是 mac 实际网络环境的合理产物, 不是 STUN bug.
+    if r1.reflexive_ip != r2.reflexive_ip:
+        pytest.skip(
+            f"多公网出口环境 (r1={r1.reflexive_ip} r2={r2.reflexive_ip}), "
+            "STUN reflexive_ip 不一致是预期 (双 ISP/VPN/Tailscale/IPv4-v6 双栈), 跳过"
+        )
     # source port 不同 (每次新 socket OS 分新 ephemeral port) → reflexive port 大概率不同
     # (注: 若 NAT 表 burn through 时间长, 也可能复用同 port; 这里软断言不强求)
     print(

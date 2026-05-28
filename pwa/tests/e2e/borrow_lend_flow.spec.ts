@@ -89,7 +89,6 @@ function makeMockState(): MockState {
 async function installMocks(page: Page, state: MockState): Promise<void> {
   // 关 EventSource (SSE) 防 reconnect loop 干扰 mock 路由
   await page.addInitScript(() => {
-    // @ts-expect-error override global EventSource
     Object.defineProperty(window, "EventSource", {
       value: undefined,
       configurable: true,
