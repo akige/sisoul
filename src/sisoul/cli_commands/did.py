@@ -30,6 +30,16 @@ from sisoul.identity.did import (
     register_did,
     resolve_did,
 )
+from sisoul.identity.did_key import (
+    DidKeyError,
+    generate_did_key_from_master,
+)
+from sisoul.identity.seed import (
+    DEFAULT_SEED_FILE,
+    InvalidMnemonicError,
+    load_mnemonic_from_file,
+    mnemonic_to_master_key,
+)
 
 did_app = typer.Typer(
     name="did",
@@ -253,6 +263,69 @@ def cmd_link_social(
     typer.echo(f"   embedded wallet: {result.embedded_wallet_address}")
     typer.echo(f"   issued_at: {result.issued_at}")
     typer.echo("   提示: Phase 3 RC 才真调 Privy API, 当前为确定性 mock.")
+
+
+# ── did show (Wave B' P0-3 · 显示本机 did:key) ───────────────────────────────
+
+
+@did_app.command("show")
+def cmd_show(
+    seed_file: Path = typer.Option(
+        None,
+        "--seed-file",
+        help=f"BIP-39 mnemonic 文件路径 (默认 {DEFAULT_SEED_FILE})",
+    ),
+    index: int = typer.Option(
+        0, "--index", help="did:key 派生 index (默认 0)"
+    ),
+    passphrase: str = typer.Option("", "--passphrase", help="BIP-39 passphrase"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
+) -> None:
+    """显示从 BIP-39 seed 派生的 did:key (Wave B' P0-3).
+
+    无需链上注册, 同 seed + 同 index 跨设备一致.
+    """
+    try:
+        mnemonic = load_mnemonic_from_file(seed_file)
+    except FileNotFoundError:
+        typer.echo(
+            f"❌ seed 文件不存在 ({seed_file or DEFAULT_SEED_FILE}). "
+            f"先 `sisoul init` 或 `sisoul restore-seed`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except (InvalidMnemonicError, PermissionError) as e:
+        typer.echo(f"❌ seed 文件无法加载: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        master = mnemonic_to_master_key(mnemonic, passphrase=passphrase)
+        did_key, _priv, pub = generate_did_key_from_master(master, index=index)
+    except (InvalidMnemonicError, DidKeyError, ValueError) as e:
+        typer.echo(f"❌ did:key 派生失败: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "did_key": did_key,
+                    "pubkey_hex": pub.encode().hex(),
+                    "index": index,
+                    "key_type": "X25519",
+                    "method": "did:key (W3C-CCG, local-only, no chain)",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    typer.echo(f"✅ 本机 did:key (index={index}):")
+    typer.echo(f"   {did_key}")
+    typer.echo(f"   pubkey (hex 32B): {pub.encode().hex()}")
+    typer.echo("   key_type: X25519 (libsodium box 兼容)")
+    typer.echo("   note: 完全本地派生, 跨设备同 seed 一致, 无需链上注册.")
 
 
 __all__ = ["did_app"]
