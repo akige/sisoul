@@ -291,10 +291,10 @@ def _default_forwarder(
 
     adapter = get_adapter(provider, api_key=api_key, model=model)
     messages = [{"role": "user", "content": prompt}]
-    response_text = adapter.chat(messages, **kwargs)
-    # 粗略 token 估算 (Anthropic 真值需调 count_tokens API; 此处 metadata 估值即可)
-    prompt_tokens = max(1, len(prompt) // 4)
-    response_tokens = max(1, len(response_text) // 4)
+    # Wave B' P0-1: chat_with_usage 取真 token 计数 (Anthropic SDK usage).
+    response_text, prompt_tokens, response_tokens = adapter.chat_with_usage(
+        messages, **kwargs
+    )
     return response_text, prompt_tokens, response_tokens
 
 

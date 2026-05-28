@@ -90,6 +90,24 @@ class LLMAdapter(ABC):
             "支持 embed 的 provider: OpenAIAdapter."
         )
 
+    def chat_with_usage(
+        self, messages: list[dict], **kwargs
+    ) -> tuple[str, int, int]:
+        """同 chat() 但返 (text, prompt_tokens, response_tokens).
+
+        Wave B' P0-1: encrypted_proxy._default_forwarder 用此精确 token 计数.
+        默认实现 chars/4 估算; AnthropicAdapter 等子类 override 真 usage 字段.
+        """
+        text = self.chat(messages, **kwargs)
+        prompt_chars = 0
+        for m in messages:
+            c = m.get("content", "")
+            if isinstance(c, str):
+                prompt_chars += len(c)
+        prompt_tokens = max(1, prompt_chars // 4)
+        response_tokens = max(1, len(text) // 4)
+        return text, prompt_tokens, response_tokens
+
     @property
     def provider_name(self) -> str:
         """provider 名称, 用于日志 / 错误信息."""
