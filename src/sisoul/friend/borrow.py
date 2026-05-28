@@ -44,6 +44,23 @@ from sisoul.friend.lend import (
     RequestStateError,
 )
 
+# Wave B' P1-1 (agent-B3): borrow 流程关键节点推 friend daemon (Waku store-and-forward).
+# push.notify_friend_sync 在 PushService 未初始化 / Waku 不可用时优雅 noop, 不影响 borrow 流程.
+try:
+    from sisoul.p2p.push import notify_friend_sync as _push_notify_friend_sync
+except Exception:  # noqa: BLE001 — push 模块未就绪绝不阻塞 borrow
+    _push_notify_friend_sync = None  # type: ignore[assignment]
+
+
+def _safe_notify(friend_did: str, kind: str, payload: dict) -> None:
+    """call push.notify_friend_sync 但永不抛 (borrow 主流程不许被推送拖死)."""
+    if _push_notify_friend_sync is None:
+        return
+    try:
+        _push_notify_friend_sync(friend_did, kind, payload)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001
+        pass
+
 # ── 类型 ────────────────────────────────────────────────────────────────────
 
 PermissionDecision = Literal["allowed", "denied", "per-request"]
@@ -407,6 +424,22 @@ def borrow_resource(
         )
         session.lend_request_id = req.id
 
+        # Wave B' P1-1: 推 lender 一条 borrow_request notification
+        # (Waku store-and-forward; lender 离线则上线 catchup 取走).
+        _safe_notify(
+            lender_did,
+            "borrow_request",
+            {
+                "lend_request_id": req.id,
+                "borrower_did": borrower_did,
+                "resource_type": resource_type,
+                "amount": int(amount),
+                "model": model,
+                "mode": session.mode,
+                "emergency_flag": emergency_flag,
+            },
+        )
+
         # 3. 按模式等结果
         if req.status == "approved":
             # strong-tie-auto / emergency-only(+flag) 直接 approved
@@ -501,6 +534,21 @@ def borrow_resource(
 
         session.status = "completed"
         session.completed_at = int(time.time())
+
+        # Wave B' P1-1: 通知 lender 这次 borrow 完成 (ledger 已写, lender 可对账)
+        _safe_notify(
+            lender_did,
+            "lend_response",
+            {
+                "lend_request_id": req.id,
+                "borrower_did": borrower_did,
+                "status": "completed",
+                "tokens_used": session.tokens_used,
+                "model": model,
+                "ledger_entry_id": session.ledger_entry_id,
+            },
+        )
+
         return session
     finally:
         store.close()
