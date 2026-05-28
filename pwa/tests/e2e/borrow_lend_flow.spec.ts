@@ -96,7 +96,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
       writable: true,
     });
   });
-  await page.route("**/sisoul/friend/list", async (route) => {
+  await page.route(/\/sisoul\/friend\/list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -104,7 +104,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/friend/add", async (route) => {
+  await page.route(/\/sisoul\/friend\/add/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     const added = {
       did: body.did,
@@ -128,7 +128,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/perms/list", async (route) => {
+  await page.route(/\/sisoul\/perms\/list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -136,7 +136,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/run", async (route) => {
+  await page.route(/\/sisoul\/borrow\/run/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     const reqId = `breq-${state.borrowRequests.length + 1}`;
     state.borrowRequests.push({ request_id: reqId, ...body });
@@ -150,7 +150,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/proxy-list", async (route) => {
+  await page.route(/\/sisoul\/borrow\/proxy-list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -158,7 +158,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/proxy-stop", async (route) => {
+  await page.route(/\/sisoul\/borrow\/proxy-stop/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.proxySessions = state.proxySessions.filter(
       (s) => s.session_id !== body.session_id
@@ -174,7 +174,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/list", async (route) => {
+  await page.route(/\/sisoul\/lend\/list/, async (route) => {
     const remaining = state.lendRequests.filter(
       (r) =>
         !state.approvedRequests.includes(r.request_id) &&
@@ -187,7 +187,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/approve", async (route) => {
+  await page.route(/\/sisoul\/lend\/approve/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.approvedRequests.push(body.request_id);
     await route.fulfill({
@@ -202,7 +202,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/deny", async (route) => {
+  await page.route(/\/sisoul\/lend\/deny/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.deniedRequests.push(body.request_id);
     await route.fulfill({
@@ -215,7 +215,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/ledger/**", async (route) => {
+  await page.route(/\/sisoul\/ledger\//, async (route) => {
     const url = new URL(route.request().url());
     const dir = url.searchParams.get("direction");
     const entries = dir
@@ -233,7 +233,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
   });
 
   // SSE stream — fulfill with empty stream (browser will keep open)
-  await page.route("**/sisoul/notify/stream", async (route) => {
+  await page.route(/\/sisoul\/notify\/stream/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",
