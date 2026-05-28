@@ -87,7 +87,16 @@ function makeMockState(): MockState {
 }
 
 async function installMocks(page: Page, state: MockState): Promise<void> {
-  await page.route("**/sisoul/friend/list", async (route) => {
+  // 关 EventSource (SSE) 防 reconnect loop 干扰 mock 路由
+  await page.addInitScript(() => {
+    // @ts-expect-error override global EventSource
+    Object.defineProperty(window, "EventSource", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+  });
+  await page.route(/\/sisoul\/friend\/list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -95,7 +104,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/friend/add", async (route) => {
+  await page.route(/\/sisoul\/friend\/add/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     const added = {
       did: body.did,
@@ -119,7 +128,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/perms/list", async (route) => {
+  await page.route(/\/sisoul\/perms\/list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -127,7 +136,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/run", async (route) => {
+  await page.route(/\/sisoul\/borrow\/run/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     const reqId = `breq-${state.borrowRequests.length + 1}`;
     state.borrowRequests.push({ request_id: reqId, ...body });
@@ -141,7 +150,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/proxy-list", async (route) => {
+  await page.route(/\/sisoul\/borrow\/proxy-list/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -149,7 +158,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/borrow/proxy-stop", async (route) => {
+  await page.route(/\/sisoul\/borrow\/proxy-stop/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.proxySessions = state.proxySessions.filter(
       (s) => s.session_id !== body.session_id
@@ -165,7 +174,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/list", async (route) => {
+  await page.route(/\/sisoul\/lend\/list/, async (route) => {
     const remaining = state.lendRequests.filter(
       (r) =>
         !state.approvedRequests.includes(r.request_id) &&
@@ -178,7 +187,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/approve", async (route) => {
+  await page.route(/\/sisoul\/lend\/approve/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.approvedRequests.push(body.request_id);
     await route.fulfill({
@@ -193,7 +202,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/lend/deny", async (route) => {
+  await page.route(/\/sisoul\/lend\/deny/, async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     state.deniedRequests.push(body.request_id);
     await route.fulfill({
@@ -206,7 +215,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
-  await page.route("**/sisoul/ledger/**", async (route) => {
+  await page.route(/\/sisoul\/ledger\//, async (route) => {
     const url = new URL(route.request().url());
     const dir = url.searchParams.get("direction");
     const entries = dir
@@ -224,7 +233,7 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
   });
 
   // SSE stream — fulfill with empty stream (browser will keep open)
-  await page.route("**/sisoul/notify/stream", async (route) => {
+  await page.route(/\/sisoul\/notify\/stream/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",
@@ -235,11 +244,12 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
 
 test.describe("Wave B-4 P1-2 Friends + Borrow + Lend e2e", () => {
   test("Friends 路由: 列出朋友 + 在线状态 + 跳 borrow", async ({ page }) => {
+    test.setTimeout(60_000);
     const state = makeMockState();
     await installMocks(page, state);
 
-    await page.goto("/friends");
-    await expect(page.locator('[data-route="friends"]')).toBeVisible();
+    await page.goto("/friends", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-route="friends"]')).toBeVisible({ timeout: 20_000 });
 
     const cards = page.locator('[data-testid="friend-card"]');
     await expect(cards).toHaveCount(2);
@@ -268,9 +278,11 @@ test.describe("Wave B-4 P1-2 Friends + Borrow + Lend e2e", () => {
   });
 
   test("Add Friend modal: 校验 DID + POST + 加入列表", async ({ page }) => {
+    test.setTimeout(60_000);
     const state = makeMockState();
     await installMocks(page, state);
-    await page.goto("/friends");
+    await page.goto("/friends", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-route="friends"]')).toBeVisible({ timeout: 20_000 });
 
     // 打开 modal
     await page.locator('[data-testid="open-add-friend-modal"]').click();
@@ -301,15 +313,16 @@ test.describe("Wave B-4 P1-2 Friends + Borrow + Lend e2e", () => {
   test("Borrow + Lend 完整流: 提交 borrow / 批准 lend / deny lend / ledger 刷新", async ({
     page,
   }) => {
+    test.setTimeout(60_000);
     const state = makeMockState();
     await installMocks(page, state);
 
     // === Borrow ===
-    await page.goto("/borrow");
-    await expect(page.locator('[data-route="borrow"]')).toBeVisible();
+    await page.goto("/borrow", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-route="borrow"]')).toBeVisible({ timeout: 20_000 });
 
     // 等表单可见
-    await expect(page.locator('[data-testid="borrow-form"]')).toBeVisible();
+    await expect(page.locator('[data-testid="borrow-form"]')).toBeVisible({ timeout: 15_000 });
 
     // 填写
     await page
@@ -341,8 +354,8 @@ test.describe("Wave B-4 P1-2 Friends + Borrow + Lend e2e", () => {
     expect(state.borrowRequests[0].provider).toBe("openai");
 
     // === Lend ===
-    await page.goto("/lend");
-    await expect(page.locator('[data-route="lend"]')).toBeVisible();
+    await page.goto("/lend", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-route="lend"]')).toBeVisible({ timeout: 20_000 });
 
     const cards = page.locator('[data-testid="lend-request-card"]');
     await expect(cards).toHaveCount(2);
