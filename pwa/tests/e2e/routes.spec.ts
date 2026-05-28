@@ -9,6 +9,8 @@ const ROUTES = [
   { path: "/advanced", title: "Advanced", dataRoute: "advanced" },
   { path: "/friends", title: "Friends", dataRoute: "friends" },
   { path: "/skills", title: "Skills", dataRoute: "skills" },
+  { path: "/borrow", title: "Borrow", dataRoute: "borrow" },
+  { path: "/lend", title: "Lend", dataRoute: "lend" },
 ];
 
 test.describe("PWA 7 路由 smoke test", () => {

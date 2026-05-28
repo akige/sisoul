@@ -101,14 +101,300 @@ export interface Friend {
   handle?: string;
   trust_level: number;
   connected_at: string;
+  // P1-1 push heartbeat → last_seen_at (Unix epoch ms); 不在线 = null
+  last_seen_at?: number | null;
+  online?: boolean;
+  // 待 Lend approve 数 (走 lend pending count cache)
+  pending_lend_count?: number;
 }
 
 export function listFriends(): Promise<{ friends: Friend[] }> {
   return daemonFetch("/friend/list");
 }
 
+export interface AddFriendRequest {
+  did: string;
+  handle?: string;
+  trust_level?: number;
+}
+
+export interface AddFriendResponse {
+  did: string;
+  handle?: string;
+  trust_level: number;
+  added_at: string;
+  verified: boolean;
+}
+
+export function addFriend(body: AddFriendRequest): Promise<AddFriendResponse> {
+  return daemonFetch("/friend/add", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function listPerms(): Promise<{ perms: unknown[] }> {
   return daemonFetch("/perms/list");
+}
+
+// ── Borrow (主动借) ──────────────────────────────────────────────────────────
+// daemon endpoints (Wave B P1-2):
+//   POST /sisoul/borrow/run         触发主动 borrow (Waku → 加密 → 等批 → LLM)
+//   GET  /sisoul/borrow/proxy-list  当前活跃 proxy session
+//   POST /sisoul/borrow/proxy-stop  停某 proxy session
+//   GET  /sisoul/ledger/<friend_did>?direction=borrow|lend
+//
+// 字段命名跟 dev-A pydantic 模型对齐 (provider/model/token_count/emergency_flag/
+// session_id/proxy_endpoint/etc)。
+
+export interface BorrowRunRequest {
+  friend_did: string;
+  provider: string;
+  model: string;
+  token_count: number;
+  emergency_flag?: boolean;
+  reason?: string;
+}
+
+export type BorrowStage =
+  | "queued"
+  | "waku-discover"
+  | "encrypting"
+  | "awaiting-approval"
+  | "llm-streaming"
+  | "completed"
+  | "denied"
+  | "error";
+
+export interface BorrowRunResponse {
+  request_id: string;
+  session_id?: string;
+  stage: BorrowStage;
+  proxy_endpoint?: string;
+  approved_at?: string;
+  error?: string;
+}
+
+export function borrowRun(body: BorrowRunRequest): Promise<BorrowRunResponse> {
+  return daemonFetch("/borrow/run", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface ProxySessionItem {
+  session_id: string;
+  request_id: string;
+  friend_did: string;
+  friend_handle?: string;
+  provider: string;
+  model: string;
+  token_count: number;
+  tokens_used: number;
+  started_at: string;
+  expires_at: string;
+  stage: BorrowStage;
+  proxy_endpoint?: string;
+}
+
+export interface ProxyListResponse {
+  sessions: ProxySessionItem[];
+}
+
+export function borrowProxyList(): Promise<ProxyListResponse> {
+  return daemonFetch("/borrow/proxy-list");
+}
+
+export interface ProxyStopRequest {
+  session_id: string;
+  reason?: string;
+}
+
+export interface ProxyStopResponse {
+  session_id: string;
+  stopped_at: string;
+  tokens_used: number;
+}
+
+export function borrowProxyStop(
+  body: ProxyStopRequest
+): Promise<ProxyStopResponse> {
+  return daemonFetch("/borrow/proxy-stop", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Lend (被动接) ────────────────────────────────────────────────────────────
+// daemon endpoints:
+//   GET  /sisoul/lend/list          pending lend request 列表
+//   POST /sisoul/lend/approve       批准一条 request
+//   POST /sisoul/lend/deny          拒绝一条 request
+//
+// Pending request 通常走 WebSocket /sisoul/notify/stream 实时推 (P1-1).
+
+export interface LendRequestItem {
+  request_id: string;
+  borrower_did: string;
+  borrower_handle?: string;
+  provider: string;
+  model: string;
+  token_count: number;
+  reason?: string;
+  emergency_flag: boolean;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface LendListResponse {
+  requests: LendRequestItem[];
+}
+
+export function lendList(): Promise<LendListResponse> {
+  return daemonFetch("/lend/list");
+}
+
+export interface LendApproveRequest {
+  request_id: string;
+  duration_minutes?: number;
+  max_tokens?: number;
+}
+
+export interface LendApproveResponse {
+  request_id: string;
+  session_id: string;
+  approved_at: string;
+  expires_at: string;
+  proxy_endpoint?: string;
+}
+
+export function lendApprove(
+  body: LendApproveRequest
+): Promise<LendApproveResponse> {
+  return daemonFetch("/lend/approve", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface LendDenyRequest {
+  request_id: string;
+  reason?: string;
+}
+
+export interface LendDenyResponse {
+  request_id: string;
+  denied_at: string;
+}
+
+export function lendDeny(body: LendDenyRequest): Promise<LendDenyResponse> {
+  return daemonFetch("/lend/deny", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Ledger (双向账本) ────────────────────────────────────────────────────────
+export interface LedgerEntry {
+  entry_id: string;
+  request_id?: string;
+  session_id?: string;
+  direction: "borrow" | "lend";
+  counterparty_did: string;
+  counterparty_handle?: string;
+  provider: string;
+  model: string;
+  tokens_used: number;
+  cost_usd?: number;
+  started_at: string;
+  ended_at?: string;
+  status: "active" | "completed" | "denied" | "error";
+}
+
+export interface LedgerResponse {
+  friend_did?: string;
+  direction?: "borrow" | "lend";
+  entries: LedgerEntry[];
+  total_tokens: number;
+  total_cost_usd: number;
+}
+
+export function getLedger(
+  friendDid: string,
+  direction?: "borrow" | "lend"
+): Promise<LedgerResponse> {
+  const q = direction ? `?direction=${encodeURIComponent(direction)}` : "";
+  return daemonFetch(
+    `/ledger/${encodeURIComponent(friendDid)}${q}`
+  );
+}
+
+export function getLedgerAll(
+  direction?: "borrow" | "lend"
+): Promise<LedgerResponse> {
+  const q = direction ? `?direction=${encodeURIComponent(direction)}` : "";
+  return daemonFetch(`/ledger/all${q}`);
+}
+
+// ── Notify Stream (SSE/WebSocket 实时推) ────────────────────────────────────
+//
+// daemon endpoint: GET /sisoul/notify/stream (Server-Sent Events)
+//
+// 消息格式:
+//   event: lend.request   data: <LendRequestItem JSON>
+//   event: ledger.entry   data: <LedgerEntry JSON>
+//   event: friend.online  data: { did, online, last_seen_at }
+//   event: borrow.update  data: { request_id, stage, proxy_endpoint? }
+//   event: heartbeat      data: {}
+//
+// 浏览器原生 EventSource 已足够; 不需 WebSocket. 但开放 WS fallback,
+// 走 /sisoul/notify/ws (subprotocol "sisoul.notify.v1").
+
+export type NotifyEvent =
+  | { type: "lend.request"; data: LendRequestItem }
+  | { type: "ledger.entry"; data: LedgerEntry }
+  | { type: "friend.online"; data: { did: string; online: boolean; last_seen_at?: number } }
+  | { type: "borrow.update"; data: { request_id: string; stage: BorrowStage; proxy_endpoint?: string } }
+  | { type: "heartbeat"; data: Record<string, never> };
+
+export interface NotifyStreamHandle {
+  close(): void;
+  readyState(): number;
+}
+
+export function notifyStream(
+  onEvent: (ev: NotifyEvent) => void,
+  onError?: (err: Event) => void
+): NotifyStreamHandle {
+  // 跨浏览器 SSE; 测试环境 (jsdom) 没原生 EventSource → fallback no-op
+  const G = globalThis as unknown as { EventSource?: typeof EventSource };
+  if (typeof G.EventSource === "undefined") {
+    return { close: () => {}, readyState: () => 2 };
+  }
+  const es = new G.EventSource(`${DAEMON_BASE}/notify/stream`);
+
+  const types: NotifyEvent["type"][] = [
+    "lend.request",
+    "ledger.entry",
+    "friend.online",
+    "borrow.update",
+    "heartbeat",
+  ];
+  for (const t of types) {
+    es.addEventListener(t, (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        onEvent({ type: t, data } as NotifyEvent);
+      } catch {
+        // ignore malformed payload
+      }
+    });
+  }
+  if (onError) es.onerror = onError;
+  return {
+    close: () => es.close(),
+    readyState: () => es.readyState,
+  };
 }
 
 // ── Skills (§28 §3.6 packaging spec · 跟 dev-A skill_router 对齐) ───────────

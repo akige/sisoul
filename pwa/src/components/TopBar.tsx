@@ -14,6 +14,8 @@ const MOBILE_NAV: MobileNavItem[] = [
   { path: "/advanced", label: "Advanced" },
   { path: "/friends", label: "Friends" },
   { path: "/skills", label: "Skills" },
+  { path: "/borrow", label: "Borrow" },
+  { path: "/lend", label: "Lend" },
 ];
 
 export default function TopBar() {
