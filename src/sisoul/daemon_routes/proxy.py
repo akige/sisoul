@@ -1,14 +1,18 @@
-"""sisoul daemon · 加密 proxy HTTP API (Phase 4 W54-W58 · 波 5 dev-B).
+"""sisoul daemon · 加密 proxy HTTP API (Phase 4 W54-W58 · 波 5 dev-B · Wave B' P0-1).
 
 §28 §3.2 加密 proxy daemon endpoints.
 
-Endpoints:
+Endpoints (波 5):
 - POST /sisoul/proxy/forward       — Alice→Bob: 提交 encrypted_prompt, 返加密 response + metadata
 - GET  /sisoul/proxy/sessions      — 列活动 forward session (metadata only, 绝不含 prompt)
 - POST /sisoul/proxy/end-session   — 结束 session
 
-⚠️ 强制命名规范: 模块级变量 ``proxy_router`` (主集成用
-``from sisoul.daemon_routes.proxy import proxy_router; app.include_router(proxy_router)``).
+Endpoints (Wave B' P0-1 新增):
+- POST /sisoul/borrow/proxy-chat   — borrow 语义版 proxy 入口, lender_no_key 反向 case
+
+⚠️ 强制命名规范:
+- ``proxy_router`` — 主集成 ``app.include_router(proxy_router)``
+- ``borrow_proxy_router`` — Wave B' P0-1 borrow 路径
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from sisoul.friend.encrypted_proxy import (
+    ForwarderNotInjectedError,
     ProxyDecryptError,
     ProxyError,
     ProxyPermissionError,
@@ -29,6 +34,9 @@ from sisoul.friend.encrypted_proxy import (
 
 # 主集成强制命名: proxy_router
 proxy_router = APIRouter(prefix="/sisoul/proxy", tags=["proxy"])
+
+# Wave B' P0-1: borrow-side proxy-chat endpoint (Alice → Bob daemon).
+borrow_proxy_router = APIRouter(prefix="/sisoul/borrow", tags=["borrow"])
 
 
 # ── schemas ───────────────────────────────────────────────────────────────────
@@ -99,7 +107,6 @@ async def post_forward(body: ForwardRequest) -> ForwardResponse:
             detail="proxy 未启动 (sisoul proxy start 或 daemon 启动时未注册)",
         )
 
-    # 解码 pubkey / encrypted_prompt
     try:
         borrower_pubkey = bytes.fromhex(body.borrower_pubkey_hex)
     except ValueError as e:
@@ -115,7 +122,6 @@ async def post_forward(body: ForwardRequest) -> ForwardResponse:
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"encrypted_prompt_b64 不合法: {e}")
 
-    # 走 proxy
     try:
         encrypted_response, metadata = await proxy_chat_request_async(
             proxy=proxy,
@@ -130,10 +136,8 @@ async def post_forward(body: ForwardRequest) -> ForwardResponse:
     except ProxyPermissionError as e:
         raise HTTPException(status_code=403, detail=f"授权拒绝: {e}")
     except ProxyDecryptError as e:
-        # 不回显 e 详情避免 oracle attack (统一返 401-equivalent)
         raise HTTPException(status_code=401, detail="prompt 解密失败 (MAC/pubkey 错)")
     except ProxyError as e:
-        # 统一错误类名 (不含 prompt 内容)
         raise HTTPException(status_code=502, detail=f"forwarder 失败: {type(e).__name__}")
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
@@ -164,7 +168,7 @@ async def get_sessions() -> SessionsResponse:
 
 @proxy_router.post("/end-session", response_model=EndSessionResponse)
 async def post_end_session(body: EndSessionRequest) -> EndSessionResponse:
-    """主动结束某 session. 幂等 (不存在返 ok=True message 提示)."""
+    """主动结束某 session. 幂等."""
     proxy = get_global_proxy()
     if proxy is None:
         raise HTTPException(status_code=409, detail="proxy 未启动")
@@ -181,4 +185,134 @@ async def post_end_session(body: EndSessionRequest) -> EndSessionResponse:
     )
 
 
-__all__ = ["proxy_router"]
+# ── Wave B' P0-1: POST /sisoul/borrow/proxy-chat ──────────────────────────────
+
+
+class ProxyChatRequest(BaseModel):
+    """Wave B' P0-1: Alice 借用 Bob LLM quota 的加密 chat 请求体."""
+
+    borrower_did: str = Field(
+        ..., description="Alice DID (did:sisoul:* 或 did:key:z...)"
+    )
+    borrower_pubkey_hex: str = Field(
+        ..., description="Alice 32B Curve25519 pubkey hex"
+    )
+    encrypted_prompt_b64: str = Field(
+        ..., description="Alice 用 Bob pubkey 加密的 prompt (base64)"
+    )
+    target_model: str = Field(..., description="例 'claude-opus-4-7'")
+    provider: str = Field(
+        "anthropic",
+        description=(
+            "LLM provider (anthropic / openai / gemini / grok / deepseek / "
+            "ollama / openrouter)"
+        ),
+    )
+    max_tokens: int = Field(1024, ge=1, le=128000)
+    temperature: float = Field(1.0, ge=0.0, le=2.0)
+
+
+class ProxyChatResponse(BaseModel):
+    encrypted_response_b64: str
+    metadata: dict
+
+
+@borrow_proxy_router.post(
+    "/proxy-chat", response_model=ProxyChatResponse, status_code=200
+)
+async def post_borrow_proxy_chat(body: ProxyChatRequest) -> ProxyChatResponse:
+    """Wave B' P0-1: Bob daemon 接 Alice borrow 请求 → 真打 LLM → 返加密 response.
+
+    跟 /sisoul/proxy/forward 区别:
+      - /forward 是通用 proxy entrypoint, 主要给同机 / pytest 用.
+      - /borrow/proxy-chat 是 borrow 流程语义: Alice → Bob (lender) daemon, 真 LLM API key.
+
+    反向 case (lender_no_key):
+      Bob daemon 未配 LLM api_key (forwarder LLMAdapterError) → 返 401 + body 含
+      ``error: lender_no_key``. Alice ledger 收到后标 ``lender_no_key``.
+
+    隐私铁律 (跟 /forward 同):
+      - encrypted_prompt / response 全程加密
+      - metadata 走白名单 (无 prompt 字串)
+      - 任何 error_class 字段不含 prompt 内容
+    """
+    proxy = get_global_proxy()
+    if proxy is None:
+        raise HTTPException(
+            status_code=409,
+            detail="proxy 未启动 (Bob daemon 还未 `sisoul proxy start` 或 daemon 未注册)",
+        )
+
+    try:
+        borrower_pubkey = bytes.fromhex(body.borrower_pubkey_hex)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail=f"borrower_pubkey_hex 不合法: {e}"
+        )
+    if len(borrower_pubkey) != 32:
+        raise HTTPException(
+            status_code=400,
+            detail=f"borrower_pubkey 必须 32B, 实际 {len(borrower_pubkey)}B",
+        )
+
+    try:
+        encrypted_prompt = base64.b64decode(body.encrypted_prompt_b64, validate=True)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400, detail=f"encrypted_prompt_b64 不合法: {e}"
+        )
+
+    try:
+        encrypted_response, metadata = await proxy_chat_request_async(
+            proxy=proxy,
+            borrower_did=body.borrower_did,
+            borrower_pubkey=borrower_pubkey,
+            encrypted_prompt=encrypted_prompt,
+            target_model=body.target_model,
+            provider=body.provider,
+            max_tokens=body.max_tokens,
+            temperature=body.temperature,
+        )
+    except ProxyPermissionError as e:
+        raise HTTPException(status_code=403, detail=f"授权拒绝: {e}")
+    except ProxyDecryptError:
+        raise HTTPException(
+            status_code=401, detail="prompt 解密失败 (MAC/pubkey 错)"
+        )
+    except ForwarderNotInjectedError:
+        # SISOUL_DEFAULT_FORWARDER_REAL!=1 且未注入 forwarder → 视同 no_key
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "lender_no_key",
+                "reason": "Bob daemon forwarder 未启用 (SISOUL_DEFAULT_FORWARDER_REAL!=1)",
+            },
+        )
+    except ProxyError as e:
+        # forwarder 失败 (含 LLMAdapterError). proxy_chat_request 故意
+        # `raise ProxyError("forwarder 调用失败 (LLMAdapterError)") from None`
+        # 防 prompt 字串通过 e.__cause__.args 链泄漏. 故只看 str(e) class 名.
+        msg = str(e)
+        if "LLMAdapterError" in msg:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "lender_no_key",
+                    "reason": "Bob daemon 未配 LLM api key (或 key 无效)",
+                },
+            )
+        raise HTTPException(
+            status_code=502, detail=f"forwarder 失败: {type(e).__name__}"
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500, detail=f"proxy 内部错误: {type(e).__name__}"
+        )
+
+    return ProxyChatResponse(
+        encrypted_response_b64=base64.b64encode(encrypted_response).decode("ascii"),
+        metadata=metadata.to_safe_dict(),
+    )
+
+
+__all__ = ["proxy_router", "borrow_proxy_router"]

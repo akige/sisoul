@@ -113,6 +113,58 @@ class AnthropicAdapter(LLMAdapter):
                 cause=e,
             ) from e
 
+    def chat_with_usage(
+        self, messages: list[dict], **kwargs
+    ) -> tuple[str, int, int]:
+        """Wave B' P0-1: 真 token 用量 (Anthropic SDK usage 字段)."""
+        client = self._get_client()
+        max_tokens = kwargs.get("max_tokens", 1024)
+        temperature = kwargs.get("temperature", 1.0)
+
+        system_prompt = None
+        filtered_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_prompt = msg.get("content", "")
+            else:
+                filtered_messages.append(
+                    {"role": msg["role"], "content": msg["content"]}
+                )
+
+        try:
+            create_kwargs = dict(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=filtered_messages,
+            )
+            if system_prompt is not None:
+                create_kwargs["system"] = system_prompt
+
+            response = client.messages.create(**create_kwargs)
+            text = response.content[0].text
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                in_tok = int(getattr(usage, "input_tokens", 0) or 0)
+                out_tok = int(getattr(usage, "output_tokens", 0) or 0)
+            else:
+                in_tok = max(1, sum(len(m.get("content", "")) for m in messages) // 4)
+                out_tok = max(1, len(text) // 4)
+            return text, in_tok, out_tok
+        except Exception as e:
+            from anthropic import APIError
+            if isinstance(e, APIError):
+                raise LLMAdapterError(
+                    f"Anthropic API error: {e}",
+                    provider="anthropic",
+                    cause=e,
+                ) from e
+            raise LLMAdapterError(
+                f"Anthropic unexpected error: {e}",
+                provider="anthropic",
+                cause=e,
+            ) from e
+
     def chat_stream(self, messages: list[dict], **kwargs) -> Iterator[str]:
         """流式 chat. yield delta text chunks.
 

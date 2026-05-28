@@ -36,6 +36,11 @@
         <string>/Users/SISOUL_USER</string>
         <key>PATH</key>
         <string>/Users/SISOUL_USER/.sisoul/venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Wave B' P0-1: 生产 daemon 启用真 LLM forwarder. pytest 默认 unset 此 env
+             → encrypted_proxy._default_forwarder 抛 ForwarderNotInjectedError,
+             强制测试注入 mock_fn (波 7 dev-A bug-4 防误打 API). -->
+        <key>SISOUL_DEFAULT_FORWARDER_REAL</key>
+        <string>1</string>
     </dict>
 
     <key>ThrottleInterval</key>
