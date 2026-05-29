@@ -127,6 +127,13 @@ def create_app() -> FastAPI:
     except Exception as e:
         print(f"[daemon] borrow_proxy_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Wave T3 routes (OpenAI Chat Completions compat → borrow 透明转 Bob) ────
+    try:
+        from sisoul.daemon_routes.openai_compat import openai_compat_router
+        app.include_router(openai_compat_router)
+    except Exception as e:
+        print(f"[daemon] openai_compat_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
+
     # ── 波 6 routes (AI 技能 packaging + IPFS 加密分发) ──────────────────────
     try:
         from sisoul.daemon_routes.skill import skill_router
