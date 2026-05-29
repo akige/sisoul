@@ -210,11 +210,41 @@ class ProxyChatRequest(BaseModel):
     )
     max_tokens: int = Field(1024, ge=1, le=128000)
     temperature: float = Field(1.0, ge=0.0, le=2.0)
+    # T2c 真跨 OS e2e 测试用: True → 跳过真 LLM 调用, 走 echo mock forwarder.
+    # 生产 (用户真 borrow Anthropic 配额) 必须 False.
+    use_mock_forwarder: bool = Field(False, description="测试用 echo mock, 生产 False")
 
 
 class ProxyChatResponse(BaseModel):
     encrypted_response_b64: str
     metadata: dict
+
+
+@borrow_proxy_router.get("/peer-pubkey")
+async def get_borrow_peer_pubkey() -> dict:
+    """Wave B' T2c 集成: 返当前 daemon EncryptedProxy 公钥 + DID.
+
+    用途: 朋友 (Alice) 借用前先查这个拿 Bob 的真 X25519 pubkey
+    (用于 borrow/proxy-chat 加密 prompt).
+
+    现状: daemon 自动 init EncryptedProxy with `derive_friend_session_keypair`
+    (跟 did:key 派生用不同 purpose). 朋友拿 did:key pubkey 加密会解密失败,
+    必须拿这里返回的 pubkey 加密.
+
+    隐私: pubkey 是公开物 (32B), 0 敏感. 返 ok.
+    """
+    proxy = get_global_proxy()
+    if proxy is None:
+        raise HTTPException(
+            status_code=409,
+            detail="proxy 未初始化 (daemon --skip-seed 模式或 init 失败)",
+        )
+    return {
+        "self_did": proxy.self_did,
+        "pubkey_hex": bytes(proxy.self_pub).hex(),
+        "key_type": "X25519",
+        "derive_purpose": "friend-session (encrypted_proxy._PROXY_PURPOSE)",
+    }
 
 
 @borrow_proxy_router.post(
@@ -262,6 +292,14 @@ async def post_borrow_proxy_chat(body: ProxyChatRequest) -> ProxyChatResponse:
             status_code=400, detail=f"encrypted_prompt_b64 不合法: {e}"
         )
 
+    # T2c e2e 测试: use_mock_forwarder → 临时替换 proxy._forwarder
+    _orig_forwarder = None
+    if body.use_mock_forwarder:
+        def _mock_forwarder(prompt: str, model: str, **kw):  # type: ignore[no-untyped-def]
+            return (f"[MOCK] echo: {prompt[:80]}", max(1, len(prompt) // 4), 12)
+        _orig_forwarder = proxy._forwarder  # type: ignore[attr-defined]
+        proxy._forwarder = _mock_forwarder  # type: ignore[attr-defined]
+
     try:
         encrypted_response, metadata = await proxy_chat_request_async(
             proxy=proxy,
@@ -308,6 +346,10 @@ async def post_borrow_proxy_chat(body: ProxyChatRequest) -> ProxyChatResponse:
         raise HTTPException(
             status_code=500, detail=f"proxy 内部错误: {type(e).__name__}"
         )
+    finally:
+        # restore real forwarder if mock was injected
+        if _orig_forwarder is not None:
+            proxy._forwarder = _orig_forwarder  # type: ignore[attr-defined]
 
     return ProxyChatResponse(
         encrypted_response_b64=base64.b64encode(encrypted_response).decode("ascii"),
