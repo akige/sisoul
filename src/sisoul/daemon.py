@@ -120,6 +120,13 @@ def create_app() -> FastAPI:
     except Exception as e:
         print(f"[daemon] friend_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Wave B' P0-1 routes (borrow proxy-chat 真 LLM forwarder endpoint) ──────
+    try:
+        from sisoul.daemon_routes.proxy import borrow_proxy_router
+        app.include_router(borrow_proxy_router)
+    except Exception as e:
+        print(f"[daemon] borrow_proxy_router import failed: {type(e).__name__}: {e}", file=sys.stderr)
+
     # ── 波 6 routes (AI 技能 packaging + IPFS 加密分发) ──────────────────────
     try:
         from sisoul.daemon_routes.skill import skill_router
@@ -161,6 +168,40 @@ def create_app() -> FastAPI:
         app.include_router(notify_router)
     except Exception as e:
         print(f'[daemon] notify_router import failed: {type(e).__name__}: {e}', file=sys.stderr)
+
+    # ── daemon 启动时自动 init EncryptedProxy (替代用户手动 sisoul proxy start) ──
+    # 跟 cli_commands/proxy.py 同逻辑, 但跑在 daemon 进程里 (set_global_proxy 才在
+    # 同进程可见). 没 seed → 跳过 (init 前用 --skip-seed 跑的 dev 模式).
+    @app.on_event("startup")
+    async def _auto_init_global_proxy() -> None:
+        try:
+            from sisoul.identity.seed import (
+                load_mnemonic_from_file,
+                mnemonic_to_master_key,
+            )
+            from sisoul.friend.encrypted_proxy import (
+                EncryptedProxy,
+                derive_friend_session_keypair,
+                set_global_proxy,
+            )
+            mnemonic = load_mnemonic_from_file()
+            master = mnemonic_to_master_key(mnemonic)
+            priv, pub = derive_friend_session_keypair(master, friend_index=0)
+            self_did = "unknown.sisoul.eth"
+            try:
+                from sisoul.identity.did import load_did_state
+                st = load_did_state()
+                self_did = getattr(st, "did_string", None) or getattr(st, "handle", self_did)
+            except Exception:  # noqa: BLE001
+                pass
+            proxy = EncryptedProxy(self_priv=priv, self_pub=pub, self_did=self_did)
+            set_global_proxy(proxy)
+            print(f"[daemon] EncryptedProxy auto-init OK (self_did={self_did})", file=sys.stderr)
+        except FileNotFoundError:
+            # seed 不存在 (dev mode --skip-seed) — borrow/proxy-chat 会返 409
+            print("[daemon] no seed found, proxy auto-init skipped (--skip-seed mode)", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"[daemon] proxy auto-init failed: {type(e).__name__}: {e}", file=sys.stderr)
 
     return app
 

@@ -207,13 +207,17 @@ def load_mnemonic_from_file(path: Path | None = None) -> str:
         raise FileNotFoundError(f"seed 文件不存在: {target}")
 
     # 权限校验: 文件 mode 应 ≤ 0o600 (只 owner 读写)
-    file_mode = stat.S_IMODE(target.stat().st_mode)
-    # 允许 600 / 400; 拒绝 group/other 任何位
-    if file_mode & 0o077:
-        raise PermissionError(
-            f"seed 文件权限过松 ({oct(file_mode)}), 应 ≤ 0600. "
-            f"运行 chmod 600 {target} 修复"
-        )
+    # Windows: os.stat() 返回的 mode 不反映 ACL (NTFS), 默认 0o666 是 假阳性,
+    # Windows 的访问控制由 ACL (icacls) 处理. 真正不安全 only 当 Everyone 在 ACL.
+    # 简化: Windows 跳过 POSIX mode check, 信任 NTFS ACL (用户应手动 icacls /inheritance:r).
+    if os.name != "nt":
+        file_mode = stat.S_IMODE(target.stat().st_mode)
+        # 允许 600 / 400; 拒绝 group/other 任何位
+        if file_mode & 0o077:
+            raise PermissionError(
+                f"seed 文件权限过松 ({oct(file_mode)}), 应 ≤ 0600. "
+                f"运行 chmod 600 {target} 修复"
+            )
 
     text = target.read_text(encoding="utf-8").strip()
     if not verify_mnemonic(text):
