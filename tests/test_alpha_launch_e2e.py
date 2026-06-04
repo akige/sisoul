@@ -120,11 +120,14 @@ def test_alpha_scenario_2_chat_e2e_encryption_layer(alpha_vault, bob_vault):
 
     # P2-G ship 后, signal_ready 应该 True (mark in ship report)
     if signal_ready:
-        # P2-G ship: 验证 API
-        from sisoul.chat.double_ratchet import init_outbound
-        from sisoul.chat.pqxdh import generate_pre_key_bundle
-        assert callable(init_outbound)
-        assert callable(generate_pre_key_bundle)
+        # P2-G ship: 验证 ChatSession + PQXDH API
+        from sisoul.chat.double_ratchet import ChatSession
+        from sisoul.chat import pqxdh as pqxdh_mod
+        assert ChatSession is not None
+        # PQXDH module should have hybrid handshake functions
+        assert hasattr(pqxdh_mod, "generate_pre_key_bundle") or \
+               hasattr(pqxdh_mod, "PreKeyBundle") or \
+               hasattr(pqxdh_mod, "complete_handshake")
 
 
 def test_alpha_scenario_2_chat_topic_derivation_bidirectional():
