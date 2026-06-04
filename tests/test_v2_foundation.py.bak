@@ -23,7 +23,7 @@ def test_v2_imports():
 def test_v2_version():
     """v2 foundation version 0.1.0."""
     from sisoul import v2
-    assert v2.__version__.endswith("-foundation")
+    assert v2.__version__ == "0.1.0-foundation"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
