@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sisoul"
-version = "1.0.0+internal"
+version = "1.0.0-alpha"
 description = "Decentralized meta-layer protocol for AI workflow (vault + identity + portability + audit + P2P friend sharing). Internal dev, not published."
 authors = [{ name = "sisoul-internal" }]
 requires-python = ">=3.11"

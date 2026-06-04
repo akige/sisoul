@@ -8,7 +8,7 @@
 - §29 v1.0 开发执行计划
 """
 
-__version__ = "1.0.0-alpha"
+__version__ = "1.0.0+internal"
 __name_full__ = "sisoul"
 __phase__ = "Phase 5 v1.0-internal release"
 
