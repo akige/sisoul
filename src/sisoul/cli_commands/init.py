@@ -233,6 +233,154 @@ def run_init(
     return paths
 
 
+# ── P2-EF 首启 wizard ────────────────────────────────────────────────────────
+
+# wizard 5 步:
+#   1) Petname  (默认 socket.gethostname())
+#   2) 自动生 did:key, 显前 8 + 后 4
+#   3) LLM provider 选 (default / custom / skip)
+#   4) daemon 模式 (background / foreground)
+#   5) 出 QR + 提示给朋友扫
+#
+# --non-interactive 模式从 env 读取:
+#   SISOUL_INIT_PETNAME     默认 hostname
+#   SISOUL_INIT_PROVIDER    default | custom:<name> | skip   (默认 skip)
+#   SISOUL_INIT_DAEMON      background | foreground          (默认 background)
+#   SISOUL_INIT_QR          1 输出 PNG, 0 跳过 (默认 0)
+#   SISOUL_INIT_QR_OUT      QR PNG 路径 (默认 <vault>/qr.png)
+
+import os
+import socket
+
+
+def _default_petname() -> str:
+    try:
+        return socket.gethostname() or "sisoul-user"
+    except Exception:  # noqa: BLE001
+        return "sisoul-user"
+
+
+def _wizard_step_petname(non_interactive: bool) -> str:
+    default = os.environ.get("SISOUL_INIT_PETNAME", _default_petname())
+    if non_interactive:
+        typer.echo(f"[1/5] petname = {default} (from env / hostname)")
+        return default
+    typer.echo("[1/5] 起个 petname (本地昵称, 朋友会看到):")
+    return typer.prompt("  petname", default=default)
+
+
+def _wizard_step_did(vault_dir: Path) -> str:
+    """生成临时 did:key 给用户看; 真实 did 由 _handle_seed 派生 (后续步骤)."""
+    from sisoul.identity import generate_did_key
+
+    placeholder_seed = os.urandom(32)
+    did = generate_did_key(placeholder_seed)
+    short = f"{did[:12]}...{did[-4:]}"
+    typer.echo(f"[2/5] 已自动生成 did:key (预览, 真 did 由 BIP-39 seed 派生)")
+    typer.echo(f"      {short}")
+    return did
+
+
+def _wizard_step_provider(non_interactive: bool) -> str:
+    raw = os.environ.get("SISOUL_INIT_PROVIDER", "skip")
+    valid_starts = ("default", "custom", "skip")
+    if non_interactive:
+        if not raw.startswith(valid_starts):
+            typer.echo(f"WARN: SISOUL_INIT_PROVIDER={raw!r} 非法, 用 skip", err=True)
+            raw = "skip"
+        typer.echo(f"[3/5] LLM provider = {raw}")
+        return raw
+    typer.echo("[3/5] LLM provider 选 (default / custom / skip):")
+    choice = typer.prompt("  provider", default="default")
+    if not choice.startswith(valid_starts):
+        typer.echo(f"WARN: {choice!r} 非法 (default/custom/skip), 用 skip", err=True)
+        choice = "skip"
+    return choice
+
+
+def _wizard_step_daemon(non_interactive: bool) -> str:
+    raw = os.environ.get("SISOUL_INIT_DAEMON", "background")
+    if raw not in ("background", "foreground"):
+        raw = "background"
+    if non_interactive:
+        typer.echo(f"[4/5] daemon 模式 = {raw}")
+        return raw
+    typer.echo("[4/5] daemon 模式 (background / foreground):")
+    choice = typer.prompt("  daemon", default="background")
+    if choice not in ("background", "foreground"):
+        typer.echo(f"WARN: {choice!r} 非法, 用 background", err=True)
+        choice = "background"
+    return choice
+
+
+def _wizard_step_qr(
+    did: str, petname: str, vault_dir: Path, non_interactive: bool
+) -> Optional[Path]:
+    want_qr_env = os.environ.get("SISOUL_INIT_QR", "1") not in ("0", "false", "no")
+    qr_out_env = os.environ.get("SISOUL_INIT_QR_OUT", "")
+    if non_interactive:
+        if not want_qr_env:
+            typer.echo("[5/5] 跳过 QR (SISOUL_INIT_QR=0)")
+            return None
+    else:
+        ans = typer.prompt("[5/5] 生 QR PNG 给朋友扫? (y/n)", default="y")
+        if ans.strip().lower() not in ("y", "yes", "1", "true"):
+            typer.echo("      跳过 QR.")
+            return None
+
+    out_path = Path(qr_out_env).expanduser() if qr_out_env else vault_dir / "qr.png"
+    try:
+        from sisoul.cli_commands.qr import build_payload, generate_qr_png
+
+        payload = build_payload(did=did, multiaddr="", petname_hint=petname)
+        generate_qr_png(payload, out_path)
+        typer.echo(f"      QR 已写: {out_path}")
+        typer.echo("      把 PNG 发给朋友, ta 跑: sisoul friend qr-scan <png>")
+        return out_path
+    except Exception as e:  # noqa: BLE001
+        typer.echo(f"      WARN: 生 QR 失败 ({e})", err=True)
+        return None
+
+
+# 让 Optional 在文件顶可见
+from typing import Optional  # noqa: E402
+
+
+def run_wizard(
+    vault_dir: Optional[Path] = None,
+    non_interactive: bool = False,
+    skip_seed: bool = True,
+) -> dict:
+    """首启 5 步 wizard. 返回收集到的 config dict (不真起 daemon)."""
+    root = Path(vault_dir) if vault_dir is not None else DEFAULT_VAULT_DIR
+    root.mkdir(parents=True, exist_ok=True)
+
+    typer.echo("")
+    typer.echo("=== sisoul 首启 wizard (5 步) ===")
+    petname = _wizard_step_petname(non_interactive)
+    did = _wizard_step_did(root)
+    provider = _wizard_step_provider(non_interactive)
+    daemon_mode = _wizard_step_daemon(non_interactive)
+    qr_path = _wizard_step_qr(did, petname, root, non_interactive)
+
+    config = {
+        "petname": petname,
+        "did_preview": did,
+        "provider": provider,
+        "daemon_mode": daemon_mode,
+        "qr_path": str(qr_path) if qr_path else None,
+        "vault_dir": str(root),
+    }
+    config_path = root / "wizard.json"
+    config_path.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    typer.echo("")
+    typer.echo(f"✅ wizard 完成, 写入 {config_path}")
+    typer.echo(f"   petname={petname} provider={provider} daemon={daemon_mode}")
+    return config
+
+
 # typer command 包装 (cli.py 整合用)
 def cli_init(
     goals: str = typer.Option(
@@ -256,8 +404,26 @@ def cli_init(
         "--import-seed",
         help="用已有 BIP-39 mnemonic 创建 vault (跨设备恢复语义之外, 直接 init)",
     ),
+    wizard: bool = typer.Option(
+        False, "--wizard", help="首启 5 步 wizard (petname/did/provider/daemon/QR)"
+    ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="非交互 (env: SISOUL_INIT_PETNAME / _PROVIDER / _DAEMON / _QR / _QR_OUT)",
+    ),
 ) -> None:
     """引导建本地 vault + 长期目标 + BIP-39 seed (Phase 2 W17-W20)."""
+    if wizard:
+        try:
+            run_wizard(vault_dir=vault_dir, non_interactive=non_interactive)
+        except typer.Exit:
+            raise
+        except Exception as e:  # noqa: BLE001
+            typer.echo(f"❌ wizard 失败: {e}", err=True)
+            raise typer.Exit(code=3)
+        return
+
     try:
         run_init(
             goals=goals,

@@ -407,4 +407,13 @@ def cmd_add(
     )
 
 
+# ── friend qr / qr-scan (P2-EF · QR 加朋友) ──────────────────────────────────
+
+from sisoul.cli_commands.qr import cmd_qr as _cmd_qr  # noqa: E402
+from sisoul.cli_commands.qr import cmd_qr_scan as _cmd_qr_scan  # noqa: E402
+
+friend_app.command("qr")(_cmd_qr)
+friend_app.command("qr-scan")(_cmd_qr_scan)
+
+
 __all__ = ["friend_app"]
