@@ -468,3 +468,130 @@ def test_debate_result_has_synthesized_answer():
     result = d.debate("Q")
     assert "stub synthesized" in result.final_answer
     assert result.final_confidence == 0.8  # synthesizer = B (rep 0.8)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reputation Routing tests (v3.0 §4.3)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_reputation_router_init():
+    from sisoul.v2.reputation import ReputationRouter
+    r = ReputationRouter()
+    assert r is not None
+
+
+def test_reputation_update_and_score():
+    from sisoul.v2.reputation import ReputationRouter
+    r = ReputationRouter()
+    r.update("did:key:z6MkA", "rust", +0.3)
+    r.update("did:key:z6MkA", "rust", +0.2)
+    assert r.get_score("did:key:z6MkA", "rust") == 1.0  # 0.5 + 0.3 + 0.2 = clamped to 1.0
+
+
+def test_reputation_invalid_did():
+    from sisoul.v2.reputation import ReputationRouter
+    import pytest
+    r = ReputationRouter()
+    with pytest.raises(ValueError):
+        r.update("not-a-did", "rust", 0.1)
+
+
+def test_reputation_select_top_k():
+    from sisoul.v2.reputation import ReputationRouter, RoutingRequest
+    r = ReputationRouter()
+    r.update("did:key:z6MkA", "rust", +0.4)  # 0.9
+    r.update("did:key:z6MkB", "rust", -0.2)  # 0.3
+    r.update("did:key:z6MkC", "rust", +0.2)  # 0.7
+    req = RoutingRequest(query="how", topic="rust", top_k=2)
+    picked = r.select_top_k(req, ["did:key:z6MkA", "did:key:z6MkB", "did:key:z6MkC", "did:key:z6MkD"])
+    assert picked[0] == "did:key:z6MkA"  # 0.9 highest
+    assert "did:key:z6MkB" not in picked  # min_rep 0.3 borderline
+
+
+def test_reputation_default_score():
+    from sisoul.v2.reputation import ReputationRouter
+    r = ReputationRouter()
+    # no history → default 0.5
+    assert r.get_score("did:key:z6MkX", "ml") == 0.5
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Memory Compaction tests (v2.0 §4.8)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_memory_compactor_init():
+    from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig
+    mc = MemoryCompactor(CompactionConfig(), did_owner="did:key:z6MkA")
+    assert mc.did_owner == "did:key:z6MkA"
+
+
+def test_memory_compactor_invalid_did():
+    from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig
+    import pytest
+    with pytest.raises(ValueError):
+        MemoryCompactor(CompactionConfig(), did_owner="not-did")
+
+
+def test_memory_compactor_distill():
+    from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig
+    mc = MemoryCompactor(CompactionConfig(), did_owner="did:key:z6MkA")
+    lesson = mc.distill(["case1", "case2", "case3"], topic="rust")
+    assert lesson.validate() is True
+    assert len(lesson.source_case_ids) == 3
+    assert lesson.id.startswith("lesson-")
+
+
+def test_memory_compactor_distill_min_cases():
+    from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig
+    import pytest
+    mc = MemoryCompactor(CompactionConfig(), did_owner="did:key:z6MkA")
+    with pytest.raises(ValueError):
+        mc.distill(["only-one"])
+
+
+def test_memory_compactor_should_compact():
+    from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig
+    mc = MemoryCompactor(
+        CompactionConfig(cases_per_lesson=10, arweave_threshold_size_bytes=1024),
+        did_owner="did:key:z6MkA",
+    )
+    assert mc.should_compact(case_count=15, case_total_bytes=2048) is True
+    assert mc.should_compact(case_count=5, case_total_bytes=2048) is False
+    assert mc.should_compact(case_count=15, case_total_bytes=500) is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Growth Logger tests (v2.0 §4.6)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_growth_logger_write_and_read(tmp_path):
+    from sisoul.v2.growth import GrowthLogger, DailyGrowthSnapshot
+    gl = GrowthLogger(tmp_path / "vault")
+    snap = DailyGrowthSnapshot(date="2026-06-04", cases_added=5, skills_used=3)
+    p = gl.write(snap)
+    assert p.exists()
+    read = gl.read("2026-06-04")
+    assert read.cases_added == 5
+    assert read.skills_used == 3
+
+
+def test_growth_logger_last_n_days(tmp_path):
+    from sisoul.v2.growth import GrowthLogger, DailyGrowthSnapshot
+    gl = GrowthLogger(tmp_path / "vault")
+    for i, day in enumerate(["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04"]):
+        gl.write(DailyGrowthSnapshot(date=day, cases_added=i + 1, chats_sent=i * 2))
+    trend = gl.last_n_days(3)
+    assert len(trend.snapshots) == 3
+    assert trend.total_cases() == 2 + 3 + 4  # last 3
+    assert trend.avg_chats_per_day() == (2 + 4 + 6) / 3
+
+
+def test_growth_logger_empty(tmp_path):
+    from sisoul.v2.growth import GrowthLogger
+    gl = GrowthLogger(tmp_path / "vault")
+    trend = gl.last_n_days(7)
+    assert trend.total_cases() == 0
+    assert trend.avg_chats_per_day() == 0.0
