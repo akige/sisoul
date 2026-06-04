@@ -595,3 +595,116 @@ def test_growth_logger_empty(tmp_path):
     trend = gl.last_n_days(7)
     assert trend.total_cases() == 0
     assert trend.avg_chats_per_day() == 0.0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EAS client tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_eas_client_init_valid():
+    from sisoul.v2.provenance import EASClient
+    c = EASClient(network="optimism-sepolia")
+    assert c.network == "optimism-sepolia"
+
+
+def test_eas_client_init_invalid_network():
+    from sisoul.v2.provenance import EASClient
+    import pytest
+    with pytest.raises(ValueError):
+        EASClient(network="bitcoin")
+
+
+def test_eas_attest_deterministic():
+    from sisoul.v2.provenance import EASClient, build_chain
+    c1 = EASClient(network="mock")
+    c2 = EASClient(network="mock")
+    chain = build_chain("r1", "q", "a", "did:key:z6MkA", cited_cases=[("c1", "did:key:z6MkB")])
+    uid1 = c1.attest(chain)
+    uid2 = c2.attest(chain)
+    assert uid1 == uid2
+    assert uid1.startswith("mock:")
+
+
+def test_eas_verify_format():
+    from sisoul.v2.provenance import EASClient
+    c = EASClient(network="optimism-sepolia")
+    assert c.verify("0x" + "a" * 64) is True
+    assert c.verify("0xinvalid") is False
+    assert c.verify("mock:abc1234567890123") is True
+
+
+def test_eas_estimate_gas():
+    from sisoul.v2.provenance import EASClient, build_chain
+    c = EASClient(network="optimism-sepolia")
+    chain = build_chain("r", "q", "a", "did:key:z6MkA",
+                        cited_cases=[("c1", "did:key:z6MkB"), ("c2", "did:key:z6MkC")])
+    est = c.estimate_gas(chain)
+    assert est["estimated_gas"] >= 90_000  # base 80k + 2*5k
+    assert "estimated_cost_usd" in est
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SkillPublisher tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_skill_publisher_init_valid():
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    p = SkillPublisher(author_did="did:key:z6MkBob")
+    assert p.author_did == "did:key:z6MkBob"
+
+
+def test_skill_publisher_invalid_did():
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    import pytest
+    with pytest.raises(ValueError):
+        SkillPublisher(author_did="not-a-did")
+
+
+def test_skill_publisher_package(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "main.py").write_text("print('hello')")
+    (skill_dir / "manifest.json").write_text('{"name": "my-skill"}')
+    p = SkillPublisher(author_did="did:key:z6MkBob")
+    m = p.package(skill_dir, {"name": "my-skill", "version": "0.2.0", "entry": "main.py"})
+    assert m.name == "my-skill"
+    assert m.version == "0.2.0"
+    assert m.ipfs_cid.startswith("bafy")
+    assert len(m.sha256) == 64
+
+
+def test_skill_publisher_package_deterministic(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    skill_dir = tmp_path / "s"
+    skill_dir.mkdir()
+    (skill_dir / "main.py").write_text("content")
+    p1 = SkillPublisher(author_did="did:key:z6MkA")
+    p2 = SkillPublisher(author_did="did:key:z6MkA")
+    m1 = p1.package(skill_dir, {"name": "s"})
+    m2 = p2.package(skill_dir, {"name": "s"})
+    assert m1.sha256 == m2.sha256
+    assert m1.ipfs_cid == m2.ipfs_cid
+
+
+def test_skill_publisher_verify(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    skill_dir = tmp_path / "s"
+    skill_dir.mkdir()
+    (skill_dir / "main.py").write_text("orig")
+    p = SkillPublisher(author_did="did:key:z6MkA")
+    m = p.package(skill_dir, {"name": "s"})
+    assert p.verify(m, skill_dir) is True
+    # tamper
+    (skill_dir / "main.py").write_text("tampered")
+    assert p.verify(m, skill_dir) is False
+
+
+def test_skill_publisher_missing_dir():
+    from sisoul.v2.skill_marketplace import SkillPublisher
+    import pytest
+    p = SkillPublisher(author_did="did:key:z6MkA")
+    with pytest.raises(ValueError):
+        p.package("/nonexistent/path", {"name": "x"})
