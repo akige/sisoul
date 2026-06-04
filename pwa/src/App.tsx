@@ -13,6 +13,7 @@ const Friends = lazy(() => import("./routes/Friends"));
 const Skills = lazy(() => import("./routes/Skills"));
 const Borrow = lazy(() => import("./routes/Borrow"));
 const Lend = lazy(() => import("./routes/Lend"));
+const V2Dashboard = lazy(() => import("./routes/V2Dashboard"));
 
 function Layout(props: { children?: any }) {
   return (
@@ -110,6 +111,14 @@ export default function App() {
         component={() => (
           <Layout>
             <Lend />
+          </Layout>
+        )}
+      />
+      <Route
+        path="/dashboard/v2"
+        component={() => (
+          <Layout>
+            <V2Dashboard />
           </Layout>
         )}
       />
