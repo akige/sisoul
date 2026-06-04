@@ -240,3 +240,124 @@ def test_case_store_invalid_rejects(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         store.add(bad)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PersonalLoRATrainer skeleton tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_lora_trainer_init_valid():
+    from sisoul.v2.personal_lora import PersonalLoRATrainer, TrainingConfig
+    cfg = TrainingConfig()
+    t = PersonalLoRATrainer(cfg, did_owner="did:key:z6MkAlice")
+    assert t.did_owner == "did:key:z6MkAlice"
+
+
+def test_lora_trainer_init_invalid_did():
+    from sisoul.v2.personal_lora import PersonalLoRATrainer, TrainingConfig
+    import pytest
+    with pytest.raises(ValueError):
+        PersonalLoRATrainer(TrainingConfig(), did_owner="not-a-did")
+
+
+def test_lora_trainer_train_stub(tmp_path):
+    from sisoul.v2.personal_lora import PersonalLoRATrainer, TrainingConfig
+    cfg = TrainingConfig(epochs=2, rank=8)
+    t = PersonalLoRATrainer(cfg, did_owner="did:key:z6MkAlice")
+    out = tmp_path / "lora.safetensors"
+    result = t.train(out)
+    assert result.adapter.rank == 8
+    assert result.epoch_count == 2
+    assert out.exists()
+
+
+def test_lora_trainer_collect_dataset_empty(tmp_path):
+    from sisoul.v2.personal_lora import PersonalLoRATrainer, TrainingConfig
+    t = PersonalLoRATrainer(TrainingConfig(), did_owner="did:key:z6MkAlice")
+    count = t.collect_dataset(tmp_path / "nonexistent")
+    assert count == 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ProvenanceAttester tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_attester_init_invalid_did():
+    from sisoul.v2.provenance import ProvenanceAttester
+    import pytest
+    with pytest.raises(ValueError):
+        ProvenanceAttester(did_attester="not-a-did")
+
+
+def test_attester_attest_deterministic():
+    from sisoul.v2.provenance import ProvenanceAttester, build_chain
+    a = ProvenanceAttester(did_attester="did:key:z6MkAlice")
+    chain1 = build_chain("r1", "q", "a", "did:key:z6MkAlice",
+                         cited_cases=[("c1", "did:key:z6MkBob"), ("c2", "did:key:z6MkCarol")])
+    uid1 = a.attest(chain1)
+    chain2 = build_chain("r1", "q", "a", "did:key:z6MkAlice",
+                         cited_cases=[("c1", "did:key:z6MkBob"), ("c2", "did:key:z6MkCarol")])
+    uid2 = a.attest(chain2)
+    assert uid1 == uid2
+    assert uid1.startswith("0x")
+    assert len(uid1) == 66  # 0x + 64 hex chars
+
+
+def test_attester_estimate_micropay():
+    from sisoul.v2.provenance import ProvenanceAttester, build_chain
+    a = ProvenanceAttester(did_attester="did:key:z6MkAlice")
+    chain = build_chain("r", "q", "a", "did:key:z6MkAlice",
+                        cited_cases=[("c1", "did:key:z6MkBob")] * 3)
+    pay = a.estimate_micropay(chain, rate_per_citation=0.05)
+    import pytest
+    assert pay == pytest.approx(0.15)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SkillInstaller tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_skill_installer_install_valid(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillInstaller, SkillManifest
+    installer = SkillInstaller(tmp_path / "skills")
+    m = SkillManifest(
+        name="my-skill",
+        version="0.1.0",
+        entry="main.py",
+        runtime="python",
+        ipfs_cid="bafyabcdef",
+        author_did="did:key:z6MkBob",
+        sigstore_sig="sig123",
+    )
+    r = installer.install(m, skip_sigstore=True)
+    assert r.success is True
+    assert "my-skill" in r.install_path
+
+
+def test_skill_installer_install_invalid_cid(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillInstaller, SkillManifest
+    installer = SkillInstaller(tmp_path / "skills")
+    m = SkillManifest(
+        name="bad", version="0.1.0", entry="m.py", runtime="python",
+        ipfs_cid="not-cid", author_did="did:key:z6Mk", sigstore_sig="",
+    )
+    r = installer.install(m)
+    assert r.success is False
+    assert "CID" in (r.error or "")
+
+
+def test_skill_installer_list_and_uninstall(tmp_path):
+    from sisoul.v2.skill_marketplace import SkillInstaller, SkillManifest
+    installer = SkillInstaller(tmp_path / "skills")
+    for i in range(3):
+        installer.install(SkillManifest(
+            name=f"skill-{i}", version="0.1", entry="m.py", runtime="python",
+            ipfs_cid="bafyX", author_did="did:key:z6MkX", sigstore_sig="s",
+        ), skip_sigstore=True)
+    assert sorted(installer.list_installed()) == ["skill-0", "skill-1", "skill-2"]
+    assert installer.uninstall("skill-1") is True
+    assert "skill-1" not in installer.list_installed()
+    assert installer.uninstall("nonexistent") is False
