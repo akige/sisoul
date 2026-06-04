@@ -15,8 +15,10 @@ from pathlib import Path
 import pytest
 
 # 脚本路径
+# P2-EF: ops/install.sh 改成 release 一行 curl|bash 装机器 (sigstore 验签);
+# 旧的开发模式装机脚本搬到 ops/install-dev.sh (本测试集覆盖的就是这个).
 REPO_ROOT = Path(__file__).parent.parent  # dev/sisoul/
-INSTALL_SH = REPO_ROOT / "ops" / "install.sh"
+INSTALL_SH = REPO_ROOT / "ops" / "install-dev.sh"
 LAUNCHD_PLIST = REPO_ROOT / "ops" / "launchd" / "com.sisoul.daemon.plist"
 SYSTEMD_SERVICE = REPO_ROOT / "ops" / "systemd" / "sisoul-daemon.service"
 
