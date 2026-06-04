@@ -361,3 +361,110 @@ def test_skill_installer_list_and_uninstall(tmp_path):
     assert installer.uninstall("skill-1") is True
     assert "skill-1" not in installer.list_installed()
     assert installer.uninstall("nonexistent") is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Federated LoRA tests (v3.0 §62 §2.2 作用 2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_federated_aggregator_init_valid():
+    from sisoul.v2.personal_lora import FederatedLoRAAggregator, FederatedLoRAConfig
+    agg = FederatedLoRAAggregator(FederatedLoRAConfig(), aggregator_did="did:key:z6MkA")
+    assert agg.aggregator_did == "did:key:z6MkA"
+
+
+def test_federated_aggregator_invalid_did():
+    from sisoul.v2.personal_lora import FederatedLoRAAggregator, FederatedLoRAConfig
+    import pytest
+    with pytest.raises(ValueError):
+        FederatedLoRAAggregator(FederatedLoRAConfig(), aggregator_did="not-a-did")
+
+
+def test_federated_min_participants_enforced():
+    from sisoul.v2.personal_lora import (
+        FederatedLoRAAggregator, FederatedLoRAConfig, LoRAAdapter,
+    )
+    import pytest
+    agg = FederatedLoRAAggregator(
+        FederatedLoRAConfig(min_participants=3), aggregator_did="did:key:z6MkA"
+    )
+    base = LoRAAdapter(
+        name="base", version="0.1", base_model="Llama-3.1-8B", rank=16,
+        file_path="/tmp/base.safetensors", size_bytes=20_000_000,
+        did_owner="did:key:z6MkA", trained_at="2026-06-04",
+    )
+    with pytest.raises(ValueError):
+        agg.federate(base, peer_deltas=[{"did": "did:key:z6MkB"}], round_id=1)  # only 1
+
+
+def test_federated_aggregation_returns_new_adapter():
+    from sisoul.v2.personal_lora import (
+        FederatedLoRAAggregator, FederatedLoRAConfig, LoRAAdapter,
+    )
+    agg = FederatedLoRAAggregator(
+        FederatedLoRAConfig(min_participants=2), aggregator_did="did:key:z6MkA"
+    )
+    base = LoRAAdapter(
+        name="base", version="0.1", base_model="Llama-3.1-8B", rank=16,
+        file_path="/tmp/base.safetensors", size_bytes=20_000_000,
+        did_owner="did:key:z6MkA", trained_at="2026-06-04",
+    )
+    deltas = [
+        {"did": "did:key:z6MkB", "delta": "<stub>"},
+        {"did": "did:key:z6MkC", "delta": "<stub>"},
+    ]
+    new_adapter, fed_round = agg.federate(base, deltas, round_id=1)
+    assert new_adapter.name == "base-fed-r1"
+    assert fed_round.delta_count == 2
+    assert "did:key:z6MkB" in fed_round.participants
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Multi-Agent Debate tests (v3.0 §62 §1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_debate_init_requires_2_agents():
+    from sisoul.v2.debate import MultiAgentDebate, DebateAgent
+    import pytest
+    with pytest.raises(ValueError):
+        MultiAgentDebate([DebateAgent(did="did:key:z6MkA")])
+
+
+def test_debate_picks_highest_rep_synthesizer():
+    from sisoul.v2.debate import MultiAgentDebate, DebateAgent
+    agents = [
+        DebateAgent(did="did:key:z6MkA", petname="Alice", topic_reputation=0.5),
+        DebateAgent(did="did:key:z6MkB", petname="Bob", topic_reputation=0.9),
+        DebateAgent(did="did:key:z6MkC", petname="Carol", topic_reputation=0.7),
+    ]
+    d = MultiAgentDebate(agents)
+    syn = d.select_synthesizer()
+    assert syn.did == "did:key:z6MkB"
+    assert syn.topic_reputation == 0.9
+
+
+def test_debate_runs_3_rounds_default():
+    from sisoul.v2.debate import MultiAgentDebate, DebateAgent
+    agents = [
+        DebateAgent(did="did:key:z6MkA", topic_reputation=0.5),
+        DebateAgent(did="did:key:z6MkB", topic_reputation=0.7),
+    ]
+    d = MultiAgentDebate(agents)
+    result = d.debate("How to fix Rust async deadlock?")
+    # 3 rounds × 2 agents = 6 rounds in total
+    assert len(result.rounds) == 6
+    assert result.query == "How to fix Rust async deadlock?"
+
+
+def test_debate_result_has_synthesized_answer():
+    from sisoul.v2.debate import MultiAgentDebate, DebateAgent
+    agents = [
+        DebateAgent(did="did:key:z6MkA", topic_reputation=0.6),
+        DebateAgent(did="did:key:z6MkB", topic_reputation=0.8),
+    ]
+    d = MultiAgentDebate(agents)
+    result = d.debate("Q")
+    assert "stub synthesized" in result.final_answer
+    assert result.final_confidence == 0.8  # synthesizer = B (rep 0.8)
