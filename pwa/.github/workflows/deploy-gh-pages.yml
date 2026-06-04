@@ -1,0 +1,60 @@
+name: Deploy sisoul-pwa to GitHub Pages
+
+# P2-EF: 当 main 分支有 pwa/ 改动时, 自动 build + 推到 gh-pages 分支.
+# 站点 URL: https://sisoul.github.io/sisoul-pwa/   (vite base 已设 '/sisoul-pwa/')
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pwa/**"
+      - ".github/workflows/deploy-gh-pages.yml"
+      - "pwa/.github/workflows/deploy-gh-pages.yml"
+  workflow_dispatch: {}
+
+# 同一时间只跑一个 deploy
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # peaceiris/actions-gh-pages 推 gh-pages 分支需要
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: pwa/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build PWA (vite, base=/sisoul-pwa/)
+        run: npm run build
+
+      - name: Verify dist/
+        run: |
+          test -d dist || (echo "dist/ missing"; exit 1)
+          test -f dist/index.html || (echo "dist/index.html missing"; exit 1)
+          ls -la dist/
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: pwa/dist
+          publish_branch: gh-pages
+          force_orphan: true
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "deploy: sisoul-pwa ${{ github.sha }}"
