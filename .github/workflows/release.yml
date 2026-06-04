@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0-alpha)'
+        required: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write  # for sigstore OIDC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build wheel + sdist
+        run: |
+          pip install build
+          python -m build
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts with sigstore (keyless OIDC)
+        run: |
+          for f in dist/*; do
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.crt" \
+              "$f"
+          done
+
+      - name: Build install.sh release tarball
+        run: |
+          mkdir -p release/sisoul-bin
+          cp ops/install.sh release/
+          cp dist/* release/sisoul-bin/
+          cp dist/*.sig release/sisoul-bin/ 2>/dev/null || true
+          cp dist/*.crt release/sisoul-bin/ 2>/dev/null || true
+          tar -czf release/sisoul-${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}-linux-x86_64.tar.gz -C release sisoul-bin
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+          name: sisoul ${{ github.ref_name || github.event.inputs.tag }}
+          body_path: RELEASE-NOTES-v1.0-alpha.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name || github.event.inputs.tag, 'alpha') || contains(github.ref_name || github.event.inputs.tag, 'beta') }}
+          files: |
+            dist/*
+            release/install.sh
+            release/sisoul-*.tar.gz
