@@ -176,6 +176,18 @@ def create_app() -> FastAPI:
     except Exception as e:
         print(f'[daemon] notify_router import failed: {type(e).__name__}: {e}', file=sys.stderr)
 
+    # ── Phase 3 v2.0 智能体网络 routes (foundation skeleton) ───────────────
+    try:
+        from sisoul.daemon_routes.v2_case import router as v2_case_router
+        app.include_router(v2_case_router)
+    except Exception as e:
+        print(f'[daemon] v2_case_router import failed: {type(e).__name__}: {e}', file=sys.stderr)
+    try:
+        from sisoul.daemon_routes.v2_skill import router as v2_skill_router
+        app.include_router(v2_skill_router)
+    except Exception as e:
+        print(f'[daemon] v2_skill_router import failed: {type(e).__name__}: {e}', file=sys.stderr)
+
     # ── daemon 启动时自动 init EncryptedProxy (替代用户手动 sisoul proxy start) ──
     # 跟 cli_commands/proxy.py 同逻辑, 但跑在 daemon 进程里 (set_global_proxy 才在
     # 同进程可见). 没 seed → 跳过 (init 前用 --skip-seed 跑的 dev 模式).
