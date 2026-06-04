@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, beta-*, alpha]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: install
+        run: |
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
+      - name: pytest
+        run: pytest tests -q --tb=line --ignore=tests/test_v1_integration_full_user_journey.py
+      - name: alpha e2e
+        run: pytest tests/test_alpha_launch_e2e.py -v
+      - name: v2 foundation
+        run: pytest tests/test_v2_foundation.py -v
+
+  pwa:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - name: install
+        run: npm ci
+      - name: build
+        run: npm run build
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck install.sh
+        run: |
+          if [ -f ops/install.sh ]; then
+            sudo apt-get install -y shellcheck
+            shellcheck -S warning ops/install.sh
+          fi
