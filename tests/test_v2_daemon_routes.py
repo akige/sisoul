@@ -108,3 +108,79 @@ def test_v2_skill_uninstall(app):
     assert r.status_code == 200
     r2 = app.delete("/v2/skill/sX")
     assert r2.status_code == 404
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# v2_more (provenance attest / debate / reputation) routes
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def v2_more_app():
+    from sisoul.daemon_routes.v2_more import router
+    from fastapi import FastAPI
+    a = FastAPI()
+    a.include_router(router)
+    return TestClient(a)
+
+
+def test_v2_provenance_attest(v2_more_app):
+    r = v2_more_app.post("/v2/provenance/attest", json={
+        "response_id": "r1",
+        "query": "q",
+        "answer": "a",
+        "did_answerer": "did:key:z6MkAlice",
+        "cited_cases": [{"source_id": "case-1", "did_author": "did:key:z6MkBob"}],
+        "network": "mock",
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["attestation_uid"].startswith("mock:")
+    assert data["citation_count"] == 1
+
+
+def test_v2_provenance_attest_invalid_did(v2_more_app):
+    r = v2_more_app.post("/v2/provenance/attest", json={
+        "response_id": "r", "query": "q", "answer": "a", "did_answerer": "not-did",
+        "cited_cases": [],
+    })
+    assert r.status_code == 400
+
+
+def test_v2_debate_run(v2_more_app):
+    r = v2_more_app.post("/v2/debate/run", json={
+        "query": "How to fix Rust async deadlock?",
+        "agents": [
+            {"did": "did:key:z6MkA", "petname": "Alice", "topic_reputation": 0.5},
+            {"did": "did:key:z6MkB", "petname": "Bob", "topic_reputation": 0.8},
+            {"did": "did:key:z6MkC", "petname": "Carol", "topic_reputation": 0.7},
+        ],
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert "stub synthesized" in data["final_answer"]
+    assert data["n_rounds"] == 9  # 3 agents × 3 rounds
+
+
+def test_v2_debate_too_few_agents(v2_more_app):
+    r = v2_more_app.post("/v2/debate/run", json={
+        "query": "q",
+        "agents": [{"did": "did:key:z6MkA"}],
+    })
+    assert r.status_code == 400
+
+
+def test_v2_reputation_update_and_top_k(v2_more_app):
+    # update Bob & Carol's rep on rust
+    v2_more_app.post("/v2/reputation/update", json={"did": "did:key:z6MkRustExpertA", "topic": "rust", "score_delta": 0.4})
+    v2_more_app.post("/v2/reputation/update", json={"did": "did:key:z6MkRustExpertB", "topic": "rust", "score_delta": 0.3})
+
+    r = v2_more_app.post("/v2/reputation/top-k", json={
+        "query": "How to use tokio",
+        "topic": "rust",
+        "candidates": ["did:key:z6MkRustExpertA", "did:key:z6MkRustExpertB", "did:key:z6MkNoob"],
+        "top_k": 2,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert "did:key:z6MkRustExpertA" in data["picked"]
