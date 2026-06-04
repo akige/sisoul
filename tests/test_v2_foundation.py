@@ -175,3 +175,68 @@ def test_skill_install_result_schema():
     )
     assert r.success is True
     assert r.sigstore_verified is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CaseStore tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_case_store_add_and_get(tmp_path):
+    from sisoul.v2.case_graph import Case, CaseStore
+    store = CaseStore(tmp_path / "vault")
+    case = Case(
+        id="case-test-1",
+        question="how to use tokio select",
+        answer="use unwrap_or_else",
+        did_author="did:key:z6MkAlice",
+        tags=["rust", "async"],
+    )
+    path = store.add(case)
+    assert path.exists()
+
+    fetched = store.get("case-test-1")
+    assert fetched is not None
+    assert fetched.question == "how to use tokio select"
+    assert fetched.did_author == "did:key:z6MkAlice"
+
+
+def test_case_store_search_naive(tmp_path):
+    from sisoul.v2.case_graph import Case, CaseStore
+    store = CaseStore(tmp_path / "vault")
+    store.add(Case(id="c1", question="rust async tokio", answer="solution 1", did_author="did:key:z6Mk1"))
+    store.add(Case(id="c2", question="python asyncio", answer="solution 2", did_author="did:key:z6Mk2"))
+    store.add(Case(id="c3", question="rust borrow checker", answer="solution 3", did_author="did:key:z6Mk3"))
+
+    ret = store.search("rust", top_k=5)
+    assert ret.is_hit()
+    assert len(ret.cases) == 2
+    assert all("rust" in c.question.lower() for c in ret.cases)
+
+
+def test_case_store_list_all(tmp_path):
+    from sisoul.v2.case_graph import Case, CaseStore
+    store = CaseStore(tmp_path / "vault")
+    for i in range(5):
+        store.add(Case(id=f"c{i}", question=f"q{i}", answer=f"a{i}", did_author="did:key:z6MkX"))
+    cases = store.list_all()
+    assert len(cases) == 5
+
+
+def test_case_store_index_persisted(tmp_path):
+    from sisoul.v2.case_graph import Case, CaseStore
+    import json
+    store = CaseStore(tmp_path / "vault")
+    store.add(Case(id="cX", question="qX", answer="aX", did_author="did:key:z6MkX", tags=["tag1"]))
+    idx = json.loads(store.index_file.read_text())
+    assert "cX" in idx
+    assert idx["cX"]["tags"] == ["tag1"]
+
+
+def test_case_store_invalid_rejects(tmp_path):
+    from sisoul.v2.case_graph import Case, CaseStore
+    store = CaseStore(tmp_path / "vault")
+    bad = Case(id="", question="", answer="", did_author="")
+    import pytest
+    with pytest.raises(ValueError):
+        store.add(bad)
