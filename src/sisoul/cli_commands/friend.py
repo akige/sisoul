@@ -189,24 +189,32 @@ def cmd_list(
         typer.echo("(本地无 friend)")
         return
 
+    # P2-CD: load petname store (无文件就空)
+    from sisoul.friend.petname import PetnameStore
+    pn_store = PetnameStore().load()
+
+    def _name(did: str) -> str:
+        return pn_store.display_name(did)
+
     if show_score:
         typer.echo(
-            "| did | status | mutual | score | strong? | months | interactions |"
+            "| name | did | status | mutual | score | strong? | months | interactions |"
         )
-        typer.echo("|---|---|---|---|---|---|---|")
+        typer.echo("|---|---|---|---|---|---|---|---|")
         for fr in items:
             sc = compute_strong_tie_score(fr)
             typer.echo(
-                f"| {fr.did} | {fr.status} | {fr.is_mutual} | "
+                f"| {_name(fr.did)} | {fr.did} | {fr.status} | {fr.is_mutual} | "
                 f"{sc.total:.2f} | {sc.is_strong} | "
                 f"{sc.months_elapsed:.1f} | {sc.interaction_count} |"
             )
     else:
-        typer.echo("| did | status | mutual | created_at |")
-        typer.echo("|---|---|---|---|")
+        typer.echo("| name | did | status | mutual | created_at |")
+        typer.echo("|---|---|---|---|---|")
         for fr in items:
             typer.echo(
-                f"| {fr.did} | {fr.status} | {fr.is_mutual} | {fr.created_at} |"
+                f"| {_name(fr.did)} | {fr.did} | {fr.status} | "
+                f"{fr.is_mutual} | {fr.created_at} |"
             )
 
 
@@ -283,7 +291,11 @@ def cmd_info(
         )
         return
 
+    from sisoul.friend.petname import PetnameStore
+    _petname = PetnameStore().load().get(friend.did) or "-"
+
     typer.echo(f"friend: {friend.did}")
+    typer.echo(f"  petname:                 {_petname}")
     typer.echo(f"  handle:                  {friend.handle}")
     typer.echo(f"  status:                  {friend.status}")
     typer.echo(f"  mutual:                  {friend.is_mutual}")
@@ -405,6 +417,166 @@ def cmd_add(
         "  note: did:key friend 走 libsodium box 直接加密, 无 EAS attestation. "
         "如需 EAS 双向 attestation 用 'sisoul friend request'."
     )
+
+
+# ── friend mdns (P2-CD · 局域网朋友发现) ──────────────────────────────────────
+
+mdns_app = typer.Typer(
+    name="mdns",
+    help="局域网朋友发现 (mDNS / Bonjour).",
+    no_args_is_help=True,
+)
+
+
+@mdns_app.command("scan")
+def cmd_mdns_scan(
+    timeout: float = typer.Option(5.0, "--timeout", "-t", help="扫描秒数"),
+    own_did_key: Optional[str] = typer.Option(
+        None, "--own-did-key", help="过滤自己 (扫到 = 自己, 跳过)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
+) -> None:
+    """扫局域网 sisoul peer (一次性 timeout 秒)."""
+    from sisoul.friend.mdns import ZEROCONF_AVAILABLE, scan
+
+    if not ZEROCONF_AVAILABLE:
+        typer.echo("ERROR: zeroconf 未装, 'pip install zeroconf'", err=True)
+        raise typer.Exit(code=1)
+    peers = scan(timeout=timeout, own_did_key=own_did_key)
+    if json_output:
+        typer.echo(json.dumps(peers, ensure_ascii=False, indent=2))
+        return
+    if not peers:
+        typer.echo(f"(局域网未发现 sisoul peer, 扫描 {timeout}s)")
+        return
+    typer.echo("| did_key | multiaddr | petname_hint | hostname |")
+    typer.echo("|---|---|---|---|")
+    for p in peers:
+        typer.echo(
+            f"| {p['did_key']} | {p['multiaddr']} | "
+            f"{p['petname_hint']} | {p['hostname']} |"
+        )
+
+
+@mdns_app.command("announce")
+def cmd_mdns_announce(
+    did_key: str = typer.Argument(..., help="本端 did:key:z..."),
+    multiaddr: Optional[str] = typer.Option(
+        None, "--multiaddr", help="覆盖广播 multiaddr (默认本机 IP:port)"
+    ),
+    port: int = typer.Option(4001, "--port", "-p", help="广播端口"),
+    petname_hint: str = typer.Option(
+        "", "--petname-hint", help="本端展示 hint (对方扫到后可作昵称默认值)"
+    ),
+) -> None:
+    """后台 announce 本端 sisoul service, SIGINT 退出."""
+    from sisoul.friend.mdns import MDNSAnnouncer, ZEROCONF_AVAILABLE
+
+    if not ZEROCONF_AVAILABLE:
+        typer.echo("ERROR: zeroconf 未装", err=True)
+        raise typer.Exit(code=1)
+    ann = MDNSAnnouncer(
+        did_key=did_key,
+        multiaddr=multiaddr,
+        port=port,
+        petname_hint=petname_hint,
+    )
+    ann.start()
+    typer.echo(
+        f"OK mDNS announcing: {did_key} @ {ann.ip}:{port} "
+        f"(petname_hint={petname_hint or '-'}). Ctrl-C 退出."
+    )
+    try:
+        import time as _time
+        while True:
+            _time.sleep(3600)
+    except KeyboardInterrupt:
+        typer.echo("\n(SIGINT received, unregister)")
+    finally:
+        ann.stop()
+
+
+friend_app.add_typer(mdns_app, name="mdns")
+
+
+# ── friend petname (P2-CD · 本地昵称) ───────────────────────────────────────
+
+petname_app = typer.Typer(
+    name="petname",
+    help="本地昵称 (did → petname 本地映射, 不上链).",
+    no_args_is_help=True,
+)
+
+
+def _petname_store(path_opt: Optional[Path]):
+    from sisoul.friend.petname import PetnameStore
+    return PetnameStore(path=path_opt).load()
+
+
+@petname_app.command("set")
+def cmd_petname_set(
+    did_key: str = typer.Argument(..., help="did:* (did:key:z... 或 did:sisoul:*)"),
+    petname: str = typer.Argument(..., help="本地昵称"),
+    store: Optional[Path] = typer.Option(
+        None, "--store", help="petnames.json 路径 (默认 ~/.sisoul/petnames.json)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出"),
+) -> None:
+    """设 / 改本地 petname."""
+    from sisoul.friend.petname import PetnameError
+    try:
+        st = _petname_store(store)
+        st.set(did_key, petname)
+    except PetnameError as e:
+        typer.echo(f"ERROR: {e}", err=True)
+        raise typer.Exit(code=1)
+    if json_output:
+        typer.echo(json.dumps({"did": did_key, "petname": petname, "saved_to": str(st.path)}))
+        return
+    typer.echo(f"OK petname set: {did_key} → {petname}")
+    typer.echo(f"  saved: {st.path}")
+
+
+@petname_app.command("list")
+def cmd_petname_list(
+    store: Optional[Path] = typer.Option(None, "--store"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """列全部 petname."""
+    st = _petname_store(store)
+    items = st.list_all()
+    if json_output:
+        typer.echo(json.dumps(items, ensure_ascii=False, indent=2))
+        return
+    if not items:
+        typer.echo("(本地无 petname)")
+        return
+    typer.echo("| did | petname |")
+    typer.echo("|---|---|")
+    for did, name in sorted(items.items()):
+        typer.echo(f"| {did} | {name} |")
+
+
+@petname_app.command("rm")
+def cmd_petname_rm(
+    did_key: str = typer.Argument(..., help="目标 did"),
+    store: Optional[Path] = typer.Option(None, "--store"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """删本地 petname."""
+    st = _petname_store(store)
+    removed = st.remove(did_key)
+    if json_output:
+        typer.echo(json.dumps({"did": did_key, "removed": removed}))
+        return
+    if removed:
+        typer.echo(f"OK removed petname for {did_key}")
+    else:
+        typer.echo(f"(no petname for {did_key})")
+        raise typer.Exit(code=1)
+
+
+friend_app.add_typer(petname_app, name="petname")
 
 
 __all__ = ["friend_app"]

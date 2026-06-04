@@ -17,6 +17,7 @@ dependencies = [
     "python-frontmatter>=1.0",
     "httpx>=0.27",
     "PyYAML>=6.0",
+    "zeroconf>=0.130",  # P2-CD: mDNS local friend discovery
 ]
 
 [project.optional-dependencies]
