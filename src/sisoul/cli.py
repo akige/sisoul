@@ -245,5 +245,10 @@ from sisoul.cli_commands.notify import notify_app  # noqa: E402
 
 app.add_typer(notify_app, name="notify")
 
+# ── chat (P2-G, Signal Double Ratchet + PQXDH) ───────────────────────────────
+from sisoul.cli_commands.chat import chat_app  # noqa: E402
+
+app.add_typer(chat_app, name="chat")
+
 if __name__ == "__main__":
     app()
