@@ -114,3 +114,12 @@ def test_sisoul_invite_writes_file(tmp_path):
     assert output.exists()
     content = output.read_text()
     assert "did:key:z6MkDave" in content
+
+
+def test_sisoul_cheatsheet():
+    r = runner.invoke(app, ["cheatsheet"])
+    assert r.exit_code == 0
+    assert "Quick Reference" in r.stdout
+    assert "sisoul init" in r.stdout
+    assert "sisoul demo" in r.stdout
+    assert "sisoul invite" in r.stdout

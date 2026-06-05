@@ -107,7 +107,8 @@ from sisoul.cli_commands.v2_case import case_app
 from sisoul.cli_commands.v2_debate import cli_debate
 from sisoul.cli_commands.health import cli_health
 from sisoul.cli_commands.demo import cli_demo
-from sisoul.cli_commands.invite import cli_invite  # noqa: E402
+from sisoul.cli_commands.invite import cli_invite
+from sisoul.cli_commands.cheatsheet import cli_cheatsheet  # noqa: E402
 
 app.command("remember")(cli_remember)
 app.command("stats")(cli_stats)
@@ -115,6 +116,7 @@ app.command("debate")(cli_debate)
 app.command("health")(cli_health)
 app.command("demo")(cli_demo)
 app.command("invite")(cli_invite)
+app.command("cheatsheet")(cli_cheatsheet)
 app.add_typer(case_app, name="case")
 
 
