@@ -1,0 +1,9 @@
+{
+  "id": "sprint-10-zh-install",
+  "question": "怎么装 sisoul? 怎么跟 founder 聊?",
+  "answer": "3 行装好:\n\n```\ngit clone https://github.com/akige/sisoul\ncd sisoul\npip install -e '.[daemon,crypto,chat,llm]'\nsisoul init Alice          # 生成 12 个助记词, 抄在纸上保存\nsisoul founder init --from vault-template/founder   # 装 founder vault\n```\n\n2 种聊法:\n\n方式 A (零外部依赖, 不用网络): `sisoul founder chat \"你的问题\"` — founder 走 retrieval-only 模式返 vault 里相关 case 原文.\n\n方式 B (真 LLM 答, 要 API key): 自己配 LLM provider, e.g. `export SISOUL_NEWAPI_API_KEY=<你的 newapi key>` 或 `export ANTHROPIC_API_KEY=sk-ant-...`, 再 `SISOUL_RSI_PROVIDER=anthropic sisoul founder chat \"...\"`. 走 LLM 真答.\n\n9 个 LLM provider 任选: Anthropic / OpenAI / Gemini / Ollama / Grok / DeepSeek / Mistral / Cohere / Replicate / newapi 自建网关. 没有也能用 retrieval-only.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["安装", "install", "chat", "教程", "中文", "Chinese", "onboarding"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "README.md + docs/FOUNDER-AGENT.md"
+}

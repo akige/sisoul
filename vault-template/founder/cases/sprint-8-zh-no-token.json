@@ -1,0 +1,9 @@
+{
+  "id": "sprint-8-zh-no-token",
+  "question": "为什么 sisoul 不发币?为什么没有空投?早期用户有什么好处?",
+  "answer": "按白皮书 §4.10 (永不发币): sisoul 永远不发任何代币、永不 ICO/IDO/空投、永不搞 governance token。三个真原因: (1) 代币 DAO 必然走向大户治理俘获, Compound/Uniswap/MakerDAO 都是这条路, 协议激励对齐到 '持币人' 而不是 '用户'. sisoul 的使命是用户, 必须从结构上拒绝. (2) 活得久的基础设施协议没一个靠 token — Tor 22 年、Mozilla 25 年、IETF 40 年、Apache 25 年、Linux 33 年, 全靠 grant / 赞助 / 捐赠. (3) 一旦发币, 基金会主业就变成 '护盘', 真正的协议改进会退化. 早期用户拿不可转 Soulbound Badge (SBT, 0 经济价值) 作荣誉徽章, 没空投, 没积分, 来玩纯粹想要个自己 own 的 AI agent。资金靠 Optimism RetroPGF / Gitcoin / EF grant / 捐赠.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["治理", "不发币", "代币", "永不发币", "空投", "中文", "Chinese", "no-token", "governance"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "docs/whitepaper/sisoul-v1.0-whitepaper.md §4.10"
+}

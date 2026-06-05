@@ -1,0 +1,9 @@
+{
+  "id": "sprint-9-zh-security",
+  "question": "我跟 founder 对话, 他能控制我的电脑或者偷我的数据吗?",
+  "answer": "结构上不可能。证据 (docs/FOUNDER-SECURITY.md 真审计): (1) founder 代码 0 个 subprocess/os.system/exec/eval 调用 - daemon 没接 shell. (2) LLM 没 tool-calling, 没文件访问, 没 env 读取工具 - LLM 只能输出文本. (3) vault 只读 vault/founder/cases + lessons - 没 path-traversal. (4) 没 sudo, 普通 user 进程权限. (5) rate limit 每客户 20 请求/分钟 + 每次问题 4096 字符上限. 你跟 founder 对话 = 你机器上的 daemon 调 LLM API + 把答案返给你, 中间没系统操作. 最坏情况: prompt injection 让 LLM 输出错误内容 - 但仅是文本, 不会改你的任何东西. 你也可以完全离线模式跑 (retrieval-only, 不调外部 LLM), 这样连网络都不出。",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["安全", "边界", "shell", "权限", "rate-limit", "中文", "Chinese", "security"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "docs/FOUNDER-SECURITY.md"
+}

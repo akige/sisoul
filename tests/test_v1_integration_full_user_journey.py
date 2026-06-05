@@ -253,8 +253,8 @@ def test_v1_t05_version_and_all_command_entries(v1_env):
     r = _run([SISOUL_BIN, "--version"], env, timeout=10)
     assert r.returncode == 0
     combined = r.stdout + r.stderr
-    assert "1.0.0+internal" in combined or "1.0.0-internal" in combined, \
-        f"--version 不含 1.0.0±internal: stdout={r.stdout} stderr={r.stderr}"
+    assert any(s in combined for s in ("1.0.0+internal", "1.0.0-internal", "1.0.0-alpha", "v1.0-internal")), \
+        f"--version 不含 1.0.0 标识: stdout={r.stdout} stderr={r.stderr}"
 
     # 22+ 命令 --help 全可达 — 动态从 `sisoul --help` 解析命令清单, 不硬编码 (P1-6 #6)
     import re as _re

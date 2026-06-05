@@ -150,9 +150,23 @@ class FounderVault:
 
 
 def _tokenize(text: str) -> list[str]:
+    """Hybrid tokenizer: ASCII word tokens + CJK char-bigrams.
+
+    English words use \\b-bounded word tokens. CJK uses char-bigrams so that
+    short Chinese queries ("不发币" → ["不发","发币"]) overlap with Chinese
+    cases without requiring a heavy segmenter dependency like jieba.
+    """
     import re
 
-    return [m.group(0).lower() for m in re.finditer(r"\b[a-zA-Z_][a-zA-Z_0-9]+\b", text or "")]
+    if not text:
+        return []
+    tokens = [m.group(0).lower() for m in re.finditer(r"\b[a-zA-Z_][a-zA-Z_0-9]+\b", text)]
+    for run in re.findall(r"[一-鿿㐀-䶿]+", text):
+        if len(run) == 1:
+            tokens.append(run)
+        else:
+            tokens.extend(run[i : i + 2] for i in range(len(run) - 1))
+    return tokens
 
 
 __all__ = ["FounderVault", "CaseEntry", "LessonEntry", "vault_root", "founder_dir"]
