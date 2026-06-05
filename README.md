@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://www.python.org/)
 [![Sigstore](https://img.shields.io/badge/Sigstore-keyless%20OIDC-green)](https://docs.sigstore.dev/)
 [![PWA](https://img.shields.io/badge/PWA-sisoul.github.io%2Fsisoul--pwa-blue)](https://sisoul.github.io/sisoul-pwa/)
-[![Whitepaper](https://img.shields.io/badge/Whitepaper-v1.0%2014%20chapters-green)](docs/whitepaper/sisoul-whitepaper-v1.0.md)
+[![Whitepaper](https://img.shields.io/badge/Whitepaper-v1.0%2014%20chapters-green)](docs/whitepaper/sisoul-v1.0-whitepaper.md)
 [![Tests](https://img.shields.io/badge/tests-2069%20pass%20%2F%200%20fail-brightgreen)](#tests)
 [![PQXDH](https://img.shields.io/badge/PQXDH-ML--KEM--1024%20hybrid-purple)](#features)
 
@@ -162,7 +162,7 @@ Current state: **1939+ pass / 0 fail / 24 skip**.
 
 ## Architecture deep-dive
 
-- [Whitepaper v1.0](docs/whitepaper/sisoul-whitepaper-v1.0.md) — 14 chapters
+- [Whitepaper v1.0](docs/whitepaper/sisoul-v1.0-whitepaper.md) — 14 chapters
 - [Alpha Launch Playbook](docs/ALPHA-LAUNCH-PLAYBOOK.md) — install + use + risks
 - [Release Notes v1.0-alpha](RELEASE-NOTES-v1.0-alpha.md)
 - obs documents §28 § 31 §52 §57 §61 §62 §63 §64

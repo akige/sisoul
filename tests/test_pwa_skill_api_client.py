@@ -14,9 +14,7 @@ dev-A 跟 dev-B 并行 ship · 集成时 dev-A 的 router 可能还没 ship · �
      skill_router 检查 path/method/Pydantic 字段名跟 daemon.ts 完全对齐.
      dev-A 没 ship → skipif 跳过.
 
-设计依据: §28 §3.6 AI 技能 share endpoints +
-``<redacted-path>/asas/Infra-OPS/VibeCoderKit开源项目/30-波次开发计划-子agent并行+自动QA-vck.md``
-波 6 dev-B spec.
+设计依据: §28 §3.6 AI skill share endpoints + internal wave-6 spec.
 """
 
 from __future__ import annotations

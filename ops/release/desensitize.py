@@ -3,7 +3,7 @@
 
 用法:
     ./desensitize.py --root /tmp/sisoul-release-build/sisoul-cli \
-                     --config <repo-root>/ops/release/desensitize-blacklist.yaml \
+                     --config <repo>/ops/release/desensitize-blacklist.yaml \
                      --report /tmp/sisoul-release-build/sisoul-cli/.desensitize-report.txt
 
 退出码:

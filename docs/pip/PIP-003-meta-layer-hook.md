@@ -100,7 +100,7 @@ Inputs (from caller):
 ```
 {
   "tool": "claude-code",
-  "context_hint": "user is in <repo-root>",
+  "context_hint": "user is in ~/sisoul-dev",
   "prompt_text_so_far": "<optional, up to 4 KiB>"
 }
 ```
@@ -111,7 +111,7 @@ Outputs (from daemon):
 {
   "managed_blocks": [
     {
-      "target_path": "<claude-config-dir>/CLAUDE.md",
+      "target_path": "~/.claude/CLAUDE.md",
       "start_marker": "<!-- sisoul-managed-start -->",
       "end_marker":   "<!-- sisoul-managed-end -->",
       "content":      "...rendered Markdown...",
@@ -388,7 +388,7 @@ Per-tool sync state lives in `~/.sisoul/state/sync-<tool>.json`:
   "last_rendered_at": "2026-05-19T07:21:00Z",
   "last_rendered_checksum": "blake2b-256:...",
   "targets": {
-    "<claude-config-dir>/CLAUDE.md": {
+    "~/.claude/CLAUDE.md": {
       "size": 12345,
       "mtime_ns": 1716000000000000000,
       "last_known_section_checksum": "blake2b-256:..."

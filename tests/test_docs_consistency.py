@@ -15,7 +15,6 @@ def test_required_root_docs_exist():
         "README.md", "LICENSE", "NOTICE",
         "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "THANKS.md",
         "RELEASE-NOTES-v1.0-alpha.md", "ALPHA-LAUNCH-CHECKLIST.md",
-        "USER-WAKEUP-SUMMARY.md",
         "pyproject.toml", "VERSION", "Makefile",
         ".gitignore", ".editorconfig", ".gitattributes", ".markdownlint.yaml",
         ".pre-commit-config.yaml", "tox.ini",
@@ -154,7 +153,7 @@ def test_dockerfile_has_healthcheck():
 
 def test_obs_sprint_docs_referenced():
     """Sprint obs documents (in vault) exist."""
-    obs_root = Path.home() / "<internal-notes>/VibeCoderKit开源项目"
+    obs_root = Path.home() / ".sisoul-internal-notes"
     if not obs_root.exists():
         pytest.skip("obs vault not present (CI environment)")
     for n in [63, 64, 65, 66, 67, 68, 69]:
