@@ -35,3 +35,6 @@ cosign.key.test
 ops/release/dist/
 ops/release/.pyinstaller-build/
 ops/release/.pyinstaller-build.log
+
+# Internal sprint orchestration prompts (not for public)
+.aws-us-task-*.md
