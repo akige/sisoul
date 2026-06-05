@@ -1,0 +1,40 @@
+# sisoul .gitattributes - line endings + diff strategies + export-ignore.
+
+# Force LF line endings (cross-platform consistency)
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg binary
+*.ico binary
+*.zip binary
+*.tar.gz binary
+*.safetensors binary
+*.parquet binary
+*.so binary
+*.dylib binary
+*.dll binary
+
+# Lockfiles (no merge conflicts on these)
+uv.lock binary
+pwa/package-lock.json binary
+
+# Solidity
+*.sol linguist-language=Solidity
+
+# Hide test data from GitHub Linguist stats
+tests/* linguist-vendored=false
+pwa/dist/* linguist-generated=true
+
+# Export-ignore (excluded from git archive tarballs)
+.github/ export-ignore
+tests/ export-ignore
+*.bak export-ignore
+.editorconfig export-ignore
+.gitattributes export-ignore
+ALPHA-LAUNCH-CHECKLIST.md export-ignore
+USER-WAKEUP-SUMMARY.md export-ignore
+README-internal.md export-ignore

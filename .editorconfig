@@ -1,0 +1,37 @@
+# sisoul .editorconfig - consistent style across editors.
+# https://editorconfig.org/
+
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+[*.{js,jsx,ts,tsx,json,html,css,scss,vue,yaml,yml}]
+indent_style = space
+indent_size = 2
+
+[*.{toml,sh,bash}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{patch,diff}]
+end_of_line = unset
+insert_final_newline = unset
+
+[CHANGELOG.md]
+indent_style = space
+indent_size = 2
