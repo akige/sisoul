@@ -8,17 +8,44 @@ Endpoints:
 - GET  /v1/founder/lessons          list all loaded lessons
 
 Storage: vault/founder/* (see sisoul.founder.vault).
+
+Security gates (round 10 hardening):
+- Per-client rate limit on /chat: SISOUL_FOUNDER_RPM (default 20 requests / 60s)
+- Question length cap: 4096 chars max (Pydantic Field constraint)
+- Client IP based rate-limit bucket; for P2P chat bridge, use DID-based bucket
 """
 from __future__ import annotations
+import os
+import time
+from collections import defaultdict, deque
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from sisoul.founder.agent import FounderAgent
 from sisoul.founder.vault import FounderVault
 
 founder_router = APIRouter(prefix="/v1/founder", tags=["founder-agent"])
+
+# ── rate limit (per source) ────────────────────────────────────────────────
+_RATE_BUCKETS: dict[str, deque] = defaultdict(deque)
+_RATE_RPM = int(os.environ.get("SISOUL_FOUNDER_RPM", "20"))  # req/min/client
+_RATE_WINDOW = 60.0  # seconds
+
+
+def _rate_limit_check(key: str) -> tuple[bool, int]:
+    """Returns (allowed, retry_after_seconds)."""
+    now = time.time()
+    bucket = _RATE_BUCKETS[key]
+    # Drop entries older than window
+    while bucket and now - bucket[0] > _RATE_WINDOW:
+        bucket.popleft()
+    if len(bucket) >= _RATE_RPM:
+        retry = int(_RATE_WINDOW - (now - bucket[0])) + 1
+        return False, retry
+    bucket.append(now)
+    return True, 0
 
 
 # ── request / response models ────────────────────────────────────────────────
@@ -31,7 +58,9 @@ class FounderStatusResponse(BaseModel):
 
 
 class FounderChatRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=8192)
+    # max_length=4096 (was 8192): 4 KiB question cap to prevent
+    # token-burst abuse via the public chat surface.
+    question: str = Field(..., min_length=1, max_length=4096)
     record: bool = True
 
 
@@ -86,7 +115,17 @@ async def founder_status() -> FounderStatusResponse:
 
 
 @founder_router.post("/chat", response_model=FounderChatResponse)
-async def founder_chat(req: FounderChatRequest) -> FounderChatResponse:
+async def founder_chat(req: FounderChatRequest, request: Request) -> FounderChatResponse:
+    # Source key: client IP (for local HTTP) or X-Source-DID header (for P2P bridge).
+    src_did = request.headers.get("x-source-did")
+    bucket_key = src_did or (request.client.host if request.client else "unknown")
+    allowed, retry_after = _rate_limit_check(bucket_key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded ({_RATE_RPM}/min), retry after {retry_after}s",
+            headers={"Retry-After": str(retry_after)},
+        )
     agent = _agent()
     result = agent.chat(req.question, adapter=None, record=req.record)
     return FounderChatResponse(**result)
