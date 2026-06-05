@@ -85,24 +85,30 @@ async def rsi_status() -> RSIStatusResponse:
 
 @router.post("/iterate", response_model=RSIIterateResponse)
 async def rsi_iterate(req: RSIIterateRequest) -> RSIIterateResponse:
-    """Run one RSI iteration.
+    """Run one RSI iteration via v3.rsi.pipeline.
 
-    Skeleton: does NOT call real LLM. Returns deterministic 'no-op' iteration
-    so PWA can demo the wire. Full impl needs LLM adapter + Evaluator wired.
+    Pipeline tries to resolve LLM adapter via sisoul.llm.{SISOUL_RSI_PROVIDER}.
+    If no adapter / no API key → returns no-op record with reason explaining.
+    Records persisted to vault/rsi/history.jsonl.
     """
-    iter_id = f"rsi-{int(time.time() * 1000)}"
-    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if req.mode not in {"godel", "alpha_evolve", "dspy"}:
         raise HTTPException(status_code=400, detail=f"unknown mode: {req.mode}")
-    # Safety: dry_run default = True. Real iterate needs LLM adapter wired.
-    return RSIIterateResponse(
-        iteration_id=iter_id,
+
+    from sisoul.v3.rsi.pipeline import run_iteration
+
+    rec = run_iteration(
         mode=req.mode,
-        started_at=started_at,
-        accepted=False,
-        fitness=None,
-        candidate_count=0,
-        reason="skeleton: LLM adapter not wired; dry_run default" if req.dry_run else "skeleton: not implemented",
+        target_module=req.target_module,
+        dry_run=req.dry_run,
+    )
+    return RSIIterateResponse(
+        iteration_id=rec.iteration_id,
+        mode=rec.mode,
+        started_at=rec.started_at,
+        accepted=rec.accepted,
+        fitness=rec.fitness,
+        candidate_count=rec.candidate_count,
+        reason=rec.reason,
     )
 
 

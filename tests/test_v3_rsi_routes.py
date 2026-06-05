@@ -38,7 +38,8 @@ def test_rsi_iterate_godel(client):
     assert j["mode"] == "godel"
     assert j["iteration_id"].startswith("rsi-")
     assert j["accepted"] is False
-    assert "skeleton" in j["reason"]
+    # pipeline reports either no-adapter (CI without API key) or skeleton reason
+    assert "adapter" in j["reason"].lower() or "skeleton" in j["reason"]
 
 
 def test_rsi_iterate_alpha_evolve(client):
