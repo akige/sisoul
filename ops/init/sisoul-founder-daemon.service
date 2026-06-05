@@ -1,0 +1,42 @@
+# systemd service for sisoul founder-agent daemon (Linux: aws-us, wsl).
+#
+# Install:
+#   sudo cp ops/init/sisoul-founder-daemon.service /etc/systemd/system/
+#   # edit paths first, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sisoul-founder-daemon
+#
+# Edit User, WorkingDirectory, ExecStart, SISOUL_VAULT, optional SISOUL_NEWAPI_API_KEY
+# to your values before enabling.
+
+[Unit]
+Description=sisoul founder-agent daemon (@founder)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sisoul-dev
+Environment=SISOUL_VAULT=/home/ubuntu/.sisoul-founder
+# Uncomment + fill to enable real LLM:
+# Environment=SISOUL_NEWAPI_API_KEY=YOUR_NEWAPI_VIRTUAL_KEY
+# Environment=SISOUL_NEWAPI_BASE_URL=http://127.0.0.1:4000/v1
+ExecStart=/home/ubuntu/sisoul-dev/.venv/bin/uvicorn sisoul.daemon:app --host 127.0.0.1 --port 9876
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/sisoul-founder-daemon.log
+StandardError=append:/var/log/sisoul-founder-daemon.err.log
+
+# Resource limits — founder daemon is lightweight
+MemoryMax=512M
+TasksMax=128
+
+# Security hardening (best-effort, may be relaxed if your vault is elsewhere)
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/.sisoul-founder /var/log
+
+[Install]
+WantedBy=multi-user.target

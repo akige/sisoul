@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- macOS launchd plist for sisoul founder-agent daemon.
+         Install: cp this file to ~/Library/LaunchAgents/io.sisoul.founder-daemon.plist
+                  launchctl load ~/Library/LaunchAgents/io.sisoul.founder-daemon.plist
+         Uninstall: launchctl unload ~/Library/LaunchAgents/io.sisoul.founder-daemon.plist
+                    rm ~/Library/LaunchAgents/io.sisoul.founder-daemon.plist
+         Edit VAULT_PATH, VENV_PATH, NEWAPI_KEY to your values before loading. -->
+    <key>Label</key>
+    <string>io.sisoul.founder-daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/REPLACE_VENV_PATH/bin/uvicorn</string>
+        <string>sisoul.daemon:app</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>9876</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SISOUL_VAULT</key>
+        <string>/REPLACE_VAULT_PATH</string>
+        <!-- Optional: enable real LLM by uncommenting + filling -->
+        <!--
+        <key>SISOUL_NEWAPI_API_KEY</key>
+        <string>YOUR_NEWAPI_VIRTUAL_KEY</string>
+        <key>SISOUL_NEWAPI_BASE_URL</key>
+        <string>http://127.0.0.1:4000/v1</string>
+        -->
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/sisoul-founder-daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/sisoul-founder-daemon.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
