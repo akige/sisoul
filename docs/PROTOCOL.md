@@ -81,6 +81,7 @@ Split master into 5 shares, recover with any 3.
 |---|---|
 | Friend record sync | `/sisoul/friend/v1/{sha256(my_did)[:16]}` |
 | Chat (Alice ↔ Bob) | `/sisoul/chat/v1/{sha256(min(a,b) ":" max(a,b))[:16]}` |
+| MLS group chat (>2) | `/sisoul/mls/v1/{sha256(group_id)[:16]}` (RFC 9420, see §6.4) |
 | Pre-key bundle announce | `/sisoul/prekey/v1/{sha256(did)[:16]}` |
 | Case broadcast | `/sisoul/case/v1` (alpha: opt-in friend circle) |
 | Skill announce | `/sisoul/skill/announce/v1` |
@@ -184,6 +185,64 @@ Each chat message:
 ```
 
 Sent via GossipSub on `/sisoul/chat/v1/{pair_hash}` topic.
+
+### 6.4 MLS Group Chat (>2 participants · RFC 9420)
+
+For chats with more than two participants, sisoul uses **MLS — Messaging Layer
+Security (RFC 9420)** instead of the pairwise Double Ratchet. MLS is a
+tree-based group key agreement that scales to 1000+ members with one ratchet,
+rather than O(n) pairwise Double Ratchet sessions.
+
+**Epoch model.** The group lives in a sequence of *epochs*. Every membership
+change (add / remove) produces a **Commit** that re-keys the group to a fresh
+`epoch_secret` and increments the epoch counter (`ratchet_epoch()`):
+
+- **Forward secrecy on join** — a member added at epoch *N* receives only the
+  epoch-*N* secret (via its Welcome) and cannot decrypt epochs `< N`.
+- **Forward secrecy on removal** — a removed member is excluded from the re-key
+  recipient set and cannot derive any epoch `> N`.
+- **Post-compromise security** — epoch secrets are independent, so compromise of
+  one epoch reveals neither earlier nor later epochs.
+
+**Key schedule.** Application messages use AES-128-GCM under a key derived from
+the epoch's `encryption_secret` via `ExpandWithLabel` (RFC 9420 §8), keyed by
+the sender's leaf index and a per-sender generation counter. The AEAD AAD binds
+`group_id ‖ epoch ‖ sender ‖ generation`, so cross-epoch / cross-sender / replay
+forgeries fail authentication.
+
+**Wire format (RFC 9420 §6).** TLS presentation language with the §2.1.2
+variable-length integer (QUIC-style 2-bit prefix) for vector lengths:
+
+```
+MLSMessage   { uint16 version=0x0001; uint16 wire_format; opaque body<V>; }
+wire_format  ∈ { public_message(1), private_message(2), welcome(3),
+                 group_info(4), key_package(5) }
+FramedContent{ opaque group_id<V>; uint64 epoch; opaque sender<V>;
+               uint8 content_type; uint32 generation;
+               opaque authenticated_data<V>; opaque content<V>; }
+content_type ∈ { application(1), proposal(2), commit(3) }
+Welcome      { uint16 cipher_suite; opaque group_id<V>; uint64 epoch;
+               opaque members<V>; opaque encrypted_group_secrets<V>; }
+```
+
+Group secrets in Commit / Welcome are distributed with an HPKE-style seal
+(X25519 + HKDF-SHA256 + AES-128-GCM) to each recipient's identity key, mirroring
+RFC 9420 TreeKEM path-secret encryption.
+
+**Topic schema.** Each group maps to a single GossipSub topic carrying both
+handshake (Commit / Welcome) and application `MLSMessage` bytes:
+
+| Stream | Topic |
+|---|---|
+| MLS group | `/sisoul/mls/v1/{sha256(group_id)[:16]}` |
+
+> **Skeleton note.** The reference implementation (`sisoul.chat.mls`) implements
+> the RFC 9420 wire format and epoch/key-schedule semantics in pure Python; it
+> does not yet perform full TreeKEM HPKE path encryption or KeyPackage / X.509
+> credential validation. Identity keypairs are derived deterministically from
+> the DID for testability and must be replaced by real per-device KeyPackage keys
+> in production. The wire shape is RFC-faithful so the swap to a vetted MLS stack
+> (OpenMLS / mlspp) is mechanical.
 
 ## 7. EAS Attestation (Optional, v2.0+)
 
