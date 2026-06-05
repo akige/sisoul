@@ -102,10 +102,14 @@ app.add_typer(sync_app, name="sync")
 
 # ── remember (W11, dev-A) ────────────────────────────────────────────────────
 from sisoul.cli_commands.remember import cli_remember
-from sisoul.cli_commands.stats import cli_stats  # noqa: E402
+from sisoul.cli_commands.stats import cli_stats
+from sisoul.cli_commands.v2_case import case_app
+from sisoul.cli_commands.v2_debate import cli_debate  # noqa: E402
 
 app.command("remember")(cli_remember)
 app.command("stats")(cli_stats)
+app.command("debate")(cli_debate)
+app.add_typer(case_app, name="case")
 
 
 # ── status (W3, dev-A) ───────────────────────────────────────────────────────

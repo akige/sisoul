@@ -231,3 +231,25 @@ def test_real_daemon_full_ask_pipeline_e2e(real_daemon):
     assert l.status_code == 200
     assert l.json()["id"].startswith("lesson-")
     # 全 v2 模块 真 HTTP 链路验通
+
+
+def test_real_daemon_metrics_prometheus_format(real_daemon):
+    """5.4 Prometheus /sisoul/metrics endpoint returns valid exposition format."""
+    r = httpx.get(f"{real_daemon}/sisoul/metrics", timeout=5)
+    assert r.status_code == 200
+    text = r.text
+    # required metric names
+    for name in [
+        "sisoul_info",
+        "sisoul_cases_total",
+        "sisoul_skills_installed",
+        "sisoul_friends_total",
+        "sisoul_lessons_total",
+        "sisoul_growth_snapshot_days",
+    ]:
+        assert name in text, f"missing metric {name}"
+    # HELP + TYPE format
+    assert "# HELP sisoul_cases_total" in text
+    assert "# TYPE sisoul_cases_total gauge" in text
+    # version label
+    assert 'version="1.0.0-alpha"' in text
