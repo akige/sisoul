@@ -1,0 +1,92 @@
+# mkdocs config - documentation site
+# Build: mkdocs build (or tox -e docs)
+# Preview: mkdocs serve (localhost:8000)
+# Deploy: mkdocs gh-deploy --force (pushes to gh-pages branch)
+
+site_name: sisoul
+site_description: Decentralized P2P AI agent protocol. Your AI agent, your data, your friends, no cloud.
+site_url: https://sisoul.io
+repo_url: https://github.com/sisoul/sisoul
+repo_name: sisoul/sisoul
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sisoul/sisoul
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/sisoul_io
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/sisoul
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji
+  - tables
+  - footnotes
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: "#"
+      toc_depth: 3
+
+nav:
+  - Home: index.md
+  - Quick Start:
+    - English: QUICK-START.md
+    - 中文: i18n/zh-CN/QUICK-START.md
+  - User Guide:
+    - FAQ: FAQ.md
+    - Alpha Launch Playbook: ALPHA-LAUNCH-PLAYBOOK.md
+    - Alpha Launch Announcement Drafts: ALPHA-LAUNCH-ANNOUNCEMENT-DRAFTS.md
+  - Architecture:
+    - Architecture: ARCHITECTURE.md
+    - Whitepaper: whitepaper/sisoul-whitepaper-v1.0.md
+  - Developer Guide:
+    - CI/CD Workflows: CI-CD-WORKFLOWS.md
+  - Reference:
+    - GitHub: https://github.com/sisoul/sisoul
+    - PWA: https://sisoul.github.io/sisoul-pwa/
+
+plugins:
+  - search
+  - tags
+
+# Strict mode: warn on broken links
+strict: true
