@@ -16,6 +16,7 @@ const Lend = lazy(() => import("./routes/Lend"));
 const V2Dashboard = lazy(() => import("./routes/V2Dashboard"));
 const Ask = lazy(() => import("./routes/Ask"));
 const Debate = lazy(() => import("./routes/Debate"));
+const SkillsV2 = lazy(() => import("./routes/SkillsV2"));
 
 function Layout(props: { children?: any }) {
   return (
@@ -129,6 +130,14 @@ export default function App() {
         component={() => (
           <Layout>
             <Debate />
+          </Layout>
+        )}
+      />
+      <Route
+        path="/skills/v2"
+        component={() => (
+          <Layout>
+            <SkillsV2 />
           </Layout>
         )}
       />
