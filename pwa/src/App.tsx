@@ -18,6 +18,7 @@ const Ask = lazy(() => import("./routes/Ask"));
 const Debate = lazy(() => import("./routes/Debate"));
 const SkillsV2 = lazy(() => import("./routes/SkillsV2"));
 const Stats = lazy(() => import("./routes/Stats"));
+const Cheatsheet = lazy(() => import("./routes/Cheatsheet"));
 
 function Layout(props: { children?: any }) {
   return (
@@ -147,6 +148,14 @@ export default function App() {
         component={() => (
           <Layout>
             <Stats />
+          </Layout>
+        )}
+      />
+      <Route
+        path="/cheatsheet"
+        component={() => (
+          <Layout>
+            <Cheatsheet />
           </Layout>
         )}
       />

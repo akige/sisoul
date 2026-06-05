@@ -158,3 +158,9 @@ def test_sisoul_completion_install(tmp_path, monkeypatch):
     assert target.exists()
     content = target.read_text()
     assert "_sisoul_complete" in content
+
+
+def test_sisoul_friend_discover_help():
+    r = runner.invoke(app, ["friend-discover", "--help"])
+    assert r.exit_code == 0
+    assert "mDNS" in r.stdout or "scan" in r.stdout
