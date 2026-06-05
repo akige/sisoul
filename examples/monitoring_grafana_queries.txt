@@ -1,0 +1,105 @@
+sisoul Grafana / PromQL Query Cheatsheet
+==========================================
+
+Scrape config (prometheus.yml):
+
+  scrape_configs:
+    - job_name: sisoul
+      static_configs:
+        - targets: ['127.0.0.1:9876']
+      metrics_path: /sisoul/metrics
+      scrape_interval: 30s
+
+
+Basic Queries
+-------------
+
+# Daemon up
+up{job="sisoul"}
+
+# Cases count
+sisoul_cases_total
+
+# Skills installed
+sisoul_skills_installed
+
+# Friends count
+sisoul_friends_total
+
+# Petnames count
+sisoul_petnames_total
+
+# Lessons count
+sisoul_lessons_total
+
+# Growth snapshot days
+sisoul_growth_snapshot_days
+
+
+Rate / Increase
+---------------
+
+# Cases added per minute (over 5min window)
+rate(sisoul_cases_total[5m])
+
+# Cases added in last hour
+increase(sisoul_cases_total[1h])
+
+# Daily cases growth (24h window)
+increase(sisoul_cases_total[24h])
+
+# Skills installation rate
+rate(sisoul_skills_installed[10m])
+
+
+Aggregations
+------------
+
+# Cases growth (7-day moving average)
+avg_over_time(rate(sisoul_cases_total[1d])[7d:])
+
+# Skills installed across multiple nodes (if you scrape >1 daemon)
+sum(sisoul_skills_installed)
+
+# Avg cases per instance
+avg(sisoul_cases_total)
+
+
+Multi-Metric Queries
+--------------------
+
+# Total network activity (cases + skills + chat)
+sisoul_cases_total + sisoul_skills_installed + sisoul_growth_snapshot_days
+
+# Friend-to-case ratio
+sisoul_cases_total / max(sisoul_friends_total, 1)
+
+
+Alerting Rules (see ops/prometheus-alerts.yml)
+-----------------------------------------------
+
+# Daemon down
+up{job="sisoul"} == 0
+
+# Cases growing >50/hour (spam detection)
+increase(sisoul_cases_total[1h]) > 50
+
+# Sudden skill removal
+sisoul_skills_installed < sisoul_skills_installed offset 1d
+
+# Version drift
+sisoul_info{version!="1.0.0-alpha"} > 0
+
+
+Grafana Dashboard
+-----------------
+
+Import ops/grafana-dashboard.json:
+1. Grafana → Dashboards → Import → Upload JSON
+2. Select Prometheus datasource
+3. Save
+
+Includes 10 panels:
+- Daemon Up (red/green)
+- Stat panels: cases / skills / friends / petnames / lessons / growth days / version
+- Timeseries: cases growth rate + skills activity
