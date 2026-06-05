@@ -253,3 +253,21 @@ def test_real_daemon_metrics_prometheus_format(real_daemon):
     assert "# TYPE sisoul_cases_total gauge" in text
     # version label
     assert 'version="1.0.0-alpha"' in text
+
+
+def test_real_daemon_sisoul_health_cli(real_daemon):
+    """sisoul health CLI returns OK + lists v2 routes."""
+    import subprocess, sys
+    base = real_daemon
+    res = subprocess.run(
+        [sys.executable, "-c",
+         "from sisoul.cli_commands.health import cli_health; "
+         "import typer; "
+         "typer.run(cli_health)",
+         "--base", base, "--timeout", "5"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert res.returncode == 0, f"CLI failed (exit {res.returncode}): {res.stderr}\nstdout: {res.stdout}"
+    assert "daemon health" in res.stdout
+    assert "ok" in res.stdout
+    assert "v2 routes" in res.stdout

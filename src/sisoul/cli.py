@@ -104,11 +104,13 @@ app.add_typer(sync_app, name="sync")
 from sisoul.cli_commands.remember import cli_remember
 from sisoul.cli_commands.stats import cli_stats
 from sisoul.cli_commands.v2_case import case_app
-from sisoul.cli_commands.v2_debate import cli_debate  # noqa: E402
+from sisoul.cli_commands.v2_debate import cli_debate
+from sisoul.cli_commands.health import cli_health  # noqa: E402
 
 app.command("remember")(cli_remember)
 app.command("stats")(cli_stats)
 app.command("debate")(cli_debate)
+app.command("health")(cli_health)
 app.add_typer(case_app, name="case")
 
 
