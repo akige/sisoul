@@ -186,6 +186,7 @@ def test_sisoul_backup_creates_zip(tmp_path):
 
 def test_sisoul_backup_no_vault(tmp_path):
     nonexistent = tmp_path / "no-vault"
-    r = runner.invoke(app, ["backup", "--vault", str(nonexistent), "--out", str(tmp_path / "b.zip")])
+    out_path = tmp_path / "b.zip"
+    r = runner.invoke(app, ["backup", "--vault", str(nonexistent), "--out", str(out_path)])
     assert r.exit_code == 1
-    assert "vault not found" in r.stdout or "ERROR" in r.stdout
+    assert not out_path.exists()
