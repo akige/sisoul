@@ -299,5 +299,10 @@ from sisoul.cli_commands.chat import chat_app  # noqa: E402
 
 app.add_typer(chat_app, name="chat")
 
+# ── rsi (v3 RSI 框架 skeleton · Gödel/AlphaEvolve/DSPy/Federated) ─────────────
+from sisoul.cli_commands.v3_rsi import cli_rsi  # noqa: E402
+
+app.add_typer(cli_rsi, name="rsi")
+
 if __name__ == "__main__":
     app()
