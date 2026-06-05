@@ -22,6 +22,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/skills/v2", label: "v2 Skills", icon: "▸" },
   { path: "/stats", label: "Stats", icon: "▤" },
   { path: "/cheatsheet", label: "Cheatsheet", icon: "✎" },
+  // v3 RSI (Recursive Self-Improvement)
+  { path: "/rsi", label: "v3 RSI", icon: "↻" },
   { path: "/settings", label: "Settings", icon: "◉" },
   { path: "/advanced", label: "Advanced", icon: "◆" },
 ];

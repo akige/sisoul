@@ -19,6 +19,7 @@ const Debate = lazy(() => import("./routes/Debate"));
 const SkillsV2 = lazy(() => import("./routes/SkillsV2"));
 const Stats = lazy(() => import("./routes/Stats"));
 const Cheatsheet = lazy(() => import("./routes/Cheatsheet"));
+const V3RSI = lazy(() => import("./routes/V3RSI"));
 
 function Layout(props: { children?: any }) {
   return (
@@ -164,6 +165,14 @@ export default function App() {
         component={() => (
           <Layout>
             <V2Dashboard />
+          </Layout>
+        )}
+      />
+      <Route
+        path="/rsi"
+        component={() => (
+          <Layout>
+            <V3RSI />
           </Layout>
         )}
       />
