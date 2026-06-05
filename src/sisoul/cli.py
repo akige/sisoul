@@ -41,11 +41,38 @@ def _not_implemented(cmd: str) -> None:
 
 @app.callback(invoke_without_command=True)
 def main(
-    version: bool = typer.Option(False, "--version", "-V", help="显示版本号"),
+    version: bool = typer.Option(False, "--version", "-V", help="显示版本号 + 模块状态"),
+    version_json: bool = typer.Option(False, "--version-json", help="以 JSON 输出版本信息"),
 ) -> None:
-    """sisoul 元层协议 CLI."""
+    """sisoul · 去中心化 P2P AI agent 协议 (BTC-mode install)."""
+    if version_json:
+        import json as _json
+        typer.echo(_json.dumps({
+            "version": __version__,
+            "phase": __phase__,
+            "tagline": "Your AI agent. Your data. Your friends. No cloud.",
+            "modules": {
+                "alpha": ["did:key", "friend", "provider", "borrow", "chat"],
+                "v2_foundation": ["case_graph", "personal_lora", "provenance", "skill_marketplace"],
+                "v3_foundation": ["debate", "reputation", "federated_lora"],
+            },
+        }, indent=2))
+        raise typer.Exit()
     if version:
-        typer.echo(f"sisoul {__version__} ({__phase__})")
+        typer.echo("")
+        typer.echo("  ┌─────────────────────────────────────────────┐")
+        typer.echo(f"  │  sisoul {__version__:<10} ({__phase__:<27}) │")
+        typer.echo("  │  decentralized P2P AI agent protocol         │")
+        typer.echo("  │  https://github.com/sisoul/sisoul            │")
+        typer.echo("  └─────────────────────────────────────────────┘")
+        typer.echo("")
+        typer.echo("  alpha 5 核心: did:key / friend / provider / borrow / chat (Signal PQXDH)")
+        typer.echo("  v2 foundation: case_graph / personal_lora / provenance / skill_marketplace")
+        typer.echo("  v3 foundation: debate / reputation / federated_lora")
+        typer.echo("")
+        typer.echo("  装机: curl -sSfL .../install.sh | bash")
+        typer.echo("  快开: sisoul init  (5-step wizard)")
+        typer.echo("")
         raise typer.Exit()
 
 

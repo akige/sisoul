@@ -127,3 +127,79 @@ def reputation_top_k(req: TopKRequest) -> dict:
         "picked": picked,
         "scores": [{"did": d, "score": _reputation_router.get_score(d, req.topic)} for d in picked],
     }
+
+
+# ── /v2/growth (Self-Improvement Logging) ──────────────────────────────────
+
+from sisoul.v2.growth import GrowthLogger, DailyGrowthSnapshot
+
+
+def _growth_logger() -> GrowthLogger:
+    vault = Path(os.environ.get("SISOUL_VAULT", "~/.sisoul")).expanduser()
+    return GrowthLogger(vault)
+
+
+class GrowthWriteRequest(BaseModel):
+    date: str
+    cases_added: int = 0
+    skills_installed: int = 0
+    skills_used: int = 0
+    chats_sent: int = 0
+    borrowed_llm_calls: int = 0
+    new_friends: int = 0
+    reputation_topics: dict = {}
+
+
+@router.post("/growth/write")
+def growth_write(req: GrowthWriteRequest) -> dict:
+    snap = DailyGrowthSnapshot(
+        date=req.date,
+        cases_added=req.cases_added,
+        skills_installed=req.skills_installed,
+        skills_used=req.skills_used,
+        chats_sent=req.chats_sent,
+        borrowed_llm_calls=req.borrowed_llm_calls,
+        new_friends=req.new_friends,
+        reputation_topics=req.reputation_topics,
+    )
+    path = _growth_logger().write(snap)
+    return {"date": snap.date, "path": str(path)}
+
+
+@router.get("/growth/last")
+def growth_last(n: int = 7) -> dict:
+    from dataclasses import asdict
+    trend = _growth_logger().last_n_days(n)
+    return {
+        "window_days": trend.window_days,
+        "snapshots": [asdict(s) for s in trend.snapshots],
+        "total_cases": trend.total_cases(),
+        "total_skills_used": trend.total_skills_used(),
+        "avg_chats_per_day": round(trend.avg_chats_per_day(), 2),
+    }
+
+
+# ── /v2/lesson (Memory Compaction) ─────────────────────────────────────────
+
+from sisoul.v2.memory_compaction import MemoryCompactor, CompactionConfig, Lesson
+
+
+class CompactRequest(BaseModel):
+    did_owner: str
+    source_case_ids: list[str]
+    topic: str = ""
+
+
+@router.post("/lesson/distill")
+def lesson_distill(req: CompactRequest) -> dict:
+    if not req.did_owner.startswith("did:key:"):
+        raise HTTPException(status_code=400, detail="invalid did_owner")
+    if len(req.source_case_ids) < 2:
+        raise HTTPException(status_code=400, detail="need ≥2 cases to distill")
+    try:
+        mc = MemoryCompactor(CompactionConfig(), did_owner=req.did_owner)
+        lesson = mc.distill(req.source_case_ids, topic=req.topic)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    from dataclasses import asdict
+    return asdict(lesson)

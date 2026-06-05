@@ -184,3 +184,48 @@ def test_v2_reputation_update_and_top_k(v2_more_app):
     assert r.status_code == 200
     data = r.json()
     assert "did:key:z6MkRustExpertA" in data["picked"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# v2 growth + lesson routes
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_v2_growth_write_and_last(v2_more_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("SISOUL_VAULT", str(tmp_path / "vault"))
+    for i, day in enumerate(["2026-05-29", "2026-05-30", "2026-05-31"]):
+        r = v2_more_app.post("/v2/growth/write", json={
+            "date": day, "cases_added": i + 1, "chats_sent": (i + 1) * 2,
+        })
+        assert r.status_code == 200
+    r = v2_more_app.get("/v2/growth/last?n=7")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_cases"] == 1 + 2 + 3
+    assert data["avg_chats_per_day"] == (2 + 4 + 6) / 3
+
+
+def test_v2_lesson_distill(v2_more_app):
+    r = v2_more_app.post("/v2/lesson/distill", json={
+        "did_owner": "did:key:z6MkAlice",
+        "source_case_ids": ["case-a", "case-b", "case-c"],
+        "topic": "rust",
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["id"].startswith("lesson-")
+    assert "rust" in data["title"]
+
+
+def test_v2_lesson_distill_invalid_did(v2_more_app):
+    r = v2_more_app.post("/v2/lesson/distill", json={
+        "did_owner": "not-did", "source_case_ids": ["a", "b"],
+    })
+    assert r.status_code == 400
+
+
+def test_v2_lesson_distill_too_few_cases(v2_more_app):
+    r = v2_more_app.post("/v2/lesson/distill", json={
+        "did_owner": "did:key:z6MkA", "source_case_ids": ["only-one"],
+    })
+    assert r.status_code == 400

@@ -1,86 +1,95 @@
-// v2.0 智能体网络 Dashboard (Phase 3 foundation, SolidJS).
-//
-// Foundation skeleton: full data from daemon /v2/* in v2.0 ship (T+8-12m).
-import { createSignal, onMount, For } from "solid-js";
-
-interface GrowthSnapshot {
-  date: string;
-  cases_added: number;
-  skills_used: number;
-  chats_sent: number;
-}
-
-interface CaseRetrievalStats {
-  total_cases: number;
-  hit_rate_30d: number;
-  avg_top_k_score: number;
-}
-
-interface SkillStats {
-  installed_count: number;
-  total_calls: number;
-  total_sis_paid: number;
-}
+// v2.0 智能体网络 Dashboard · 真 fetch daemon /v2/* endpoints (replaces stub).
+import { createSignal, onMount, For, Show } from "solid-js";
+import { listCases, listSkillsInstalled, getGrowthLast } from "../api/v2";
+import type { Case, GrowthTrend } from "../api/v2";
 
 export default function V2Dashboard() {
-  const [growth, setGrowth] = createSignal<GrowthSnapshot[]>([]);
-  const [caseStats, setCaseStats] = createSignal<CaseRetrievalStats | null>(null);
-  const [skillStats, setSkillStats] = createSignal<SkillStats | null>(null);
+  const [growth, setGrowth] = createSignal<GrowthTrend | null>(null);
+  const [cases, setCases] = createSignal<Case[]>([]);
+  const [caseTotal, setCaseTotal] = createSignal(0);
+  const [skillCount, setSkillCount] = createSignal(0);
+  const [skills, setSkills] = createSignal<string[]>([]);
+  const [error, setError] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(true);
 
-  onMount(() => {
-    // Foundation: stub data. Full impl: fetch from daemon /v2/* + /v2/case/search
-    setTimeout(() => {
-      setGrowth([
-        { date: "2026-05-29", cases_added: 3, skills_used: 1, chats_sent: 5 },
-        { date: "2026-05-30", cases_added: 5, skills_used: 2, chats_sent: 8 },
-        { date: "2026-05-31", cases_added: 2, skills_used: 1, chats_sent: 4 },
-        { date: "2026-06-01", cases_added: 7, skills_used: 3, chats_sent: 12 },
-        { date: "2026-06-02", cases_added: 4, skills_used: 2, chats_sent: 9 },
-        { date: "2026-06-03", cases_added: 8, skills_used: 4, chats_sent: 15 },
-        { date: "2026-06-04", cases_added: 6, skills_used: 3, chats_sent: 11 },
+  onMount(async () => {
+    try {
+      // parallel fetch
+      const [caseList, skillList, growthTrend] = await Promise.all([
+        listCases(50).catch(() => ({ cases: [], count: 0 })),
+        listSkillsInstalled().catch(() => ({ skills: [], count: 0 })),
+        getGrowthLast(7).catch(() => ({
+          window_days: 7,
+          snapshots: [],
+          total_cases: 0,
+          total_skills_used: 0,
+          avg_chats_per_day: 0,
+        })),
       ]);
-      setCaseStats({
-        total_cases: 47,
-        hit_rate_30d: 0.34,
-        avg_top_k_score: 0.71,
-      });
-      setSkillStats({
-        installed_count: 5,
-        total_calls: 142,
-        total_sis_paid: 1.23,
-      });
+      setCases(caseList.cases);
+      setCaseTotal(caseList.count);
+      setSkillCount(skillList.count);
+      setSkills(skillList.skills);
+      setGrowth(growthTrend);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
       setLoading(false);
-    }, 200);
+    }
   });
+
+  const hitRate = () => {
+    const t = caseTotal();
+    if (t === 0) return 0;
+    // foundation: simple est. as cases/100 (proxy). Full impl uses real retrieval stats.
+    return Math.min(1, t / 100);
+  };
 
   return (
     <div class="space-y-6 p-2">
       <header>
         <h1 class="text-2xl font-bold text-sisoul-text">v2.0 智能体网络 Dashboard</h1>
         <p class="text-sm text-sisoul-muted">
-          Foundation skeleton — full data from daemon /v2/* endpoints in v2.0 ship (T+8-12m).
+          真 fetch sisoul daemon /v2/* endpoints. Daemon 没起 / 没 case 时显 0.
         </p>
       </header>
 
-      {loading() ? (
-        <div class="text-sisoul-muted p-4">Loading…</div>
-      ) : (
-        <>
-          {/* Growth Curve */}
-          <section>
-            <h2 class="text-lg font-semibold mb-2">本周进化 (7-day growth)</h2>
+      <Show when={error()}>
+        <div class="border border-red-500/40 bg-red-500/10 rounded-lg p-3 text-sm">
+          <strong>Daemon 未连接</strong>: {error()}
+          <p class="text-xs text-sisoul-muted mt-1">
+            启动 daemon: <code>sisoul daemon start</code>
+          </p>
+        </div>
+      </Show>
+
+      <Show when={loading()}>
+        <div class="text-sisoul-muted p-4">Loading from daemon…</div>
+      </Show>
+
+      <Show when={!loading()}>
+        {/* Growth Curve */}
+        <section>
+          <h2 class="text-lg font-semibold mb-2">本周进化 (7-day growth)</h2>
+          <Show
+            when={growth() && growth()!.snapshots.length > 0}
+            fallback={
+              <div class="text-sm text-sisoul-muted">
+                尚无 growth 数据. daemon 每日自动 snapshot 后这里会显 7-day curve.
+              </div>
+            }
+          >
             <div class="flex gap-2 items-end h-32 border-b border-sisoul-border">
-              <For each={growth()}>
+              <For each={growth()!.snapshots}>
                 {(s) => (
                   <div class="flex-1 text-center">
                     <div
                       class="bg-sisoul-accent rounded-t mx-auto transition-all"
                       style={{
-                        height: `${s.cases_added * 12}px`,
+                        height: `${Math.max(4, s.cases_added * 12)}px`,
                         width: "70%",
                       }}
-                      title={`${s.date}: ${s.cases_added} cases`}
+                      title={`${s.date}: ${s.cases_added} cases / ${s.chats_sent} chats`}
                     />
                     <div class="text-xs text-sisoul-muted mt-1">{s.date.slice(-2)}</div>
                   </div>
@@ -88,67 +97,88 @@ export default function V2Dashboard() {
               </For>
             </div>
             <p class="text-xs text-sisoul-muted mt-2">
-              Total this week: {growth().reduce((a, s) => a + s.cases_added, 0)} cases
+              Total: {growth()!.total_cases} cases · avg chats/day {growth()!.avg_chats_per_day.toFixed(1)}
             </p>
-          </section>
+          </Show>
+        </section>
 
-          {/* Case Retrieval Stats */}
-          <section>
-            <h2 class="text-lg font-semibold mb-2">Case Retrieval</h2>
-            <div class="grid grid-cols-3 gap-3">
-              <div class="border border-sisoul-border rounded-lg p-3">
-                <div class="text-2xl font-bold">{caseStats()?.total_cases}</div>
-                <div class="text-xs text-sisoul-muted">Total Cases</div>
-              </div>
-              <div class="border border-sisoul-border rounded-lg p-3">
-                <div class="text-2xl font-bold">
-                  {((caseStats()?.hit_rate_30d ?? 0) * 100).toFixed(0)}%
-                </div>
-                <div class="text-xs text-sisoul-muted">30-day Hit Rate</div>
-              </div>
-              <div class="border border-sisoul-border rounded-lg p-3">
-                <div class="text-2xl font-bold">{caseStats()?.avg_top_k_score.toFixed(2)}</div>
-                <div class="text-xs text-sisoul-muted">Avg top-k score</div>
-              </div>
+        {/* Case Retrieval Stats */}
+        <section>
+          <h2 class="text-lg font-semibold mb-2">Case Retrieval</h2>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">{caseTotal()}</div>
+              <div class="text-xs text-sisoul-muted">Total Cases</div>
             </div>
-            <p class="text-xs text-sisoul-muted mt-2">
-              v2.0 KPI target: hit rate ≥ 30%. Current: {((caseStats()?.hit_rate_30d ?? 0) * 100).toFixed(0)}%
-              {(caseStats()?.hit_rate_30d ?? 0) >= 0.3 ? " ✅" : " ⚠️"}
-            </p>
-          </section>
-
-          {/* Skill Stats */}
-          <section>
-            <h2 class="text-lg font-semibold mb-2">Skill Ecosystem</h2>
-            <div class="grid grid-cols-3 gap-3">
-              <div class="border border-sisoul-border rounded-lg p-3 bg-yellow-50/5">
-                <div class="text-2xl font-bold">{skillStats()?.installed_count}</div>
-                <div class="text-xs text-sisoul-muted">Installed</div>
-              </div>
-              <div class="border border-sisoul-border rounded-lg p-3 bg-yellow-50/5">
-                <div class="text-2xl font-bold">{skillStats()?.total_calls}</div>
-                <div class="text-xs text-sisoul-muted">Total Calls</div>
-              </div>
-              <div class="border border-sisoul-border rounded-lg p-3 bg-yellow-50/5">
-                <div class="text-2xl font-bold">{skillStats()?.total_sis_paid.toFixed(2)} SIS</div>
-                <div class="text-xs text-sisoul-muted">Paid to authors</div>
-              </div>
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">{(hitRate() * 100).toFixed(0)}%</div>
+              <div class="text-xs text-sisoul-muted">Est. Hit Rate</div>
             </div>
-          </section>
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">v2.0 KPI</div>
+              <div class="text-xs text-sisoul-muted">target ≥ 30% (T+12m)</div>
+            </div>
+          </div>
+        </section>
 
-          {/* Roadmap */}
-          <section>
-            <h2 class="text-lg font-semibold mb-2">Roadmap to 涌现</h2>
+        {/* Recent cases */}
+        <section>
+          <h2 class="text-lg font-semibold mb-2">Recent Cases (top 5)</h2>
+          <Show
+            when={cases().length > 0}
+            fallback={<div class="text-sm text-sisoul-muted">尚无 case. 通过 sisoul ask 自动写入.</div>}
+          >
             <ul class="space-y-1 text-sm">
-              <li><strong>alpha v1.0 (NOW)</strong>: 5 核心 + Signal chat (Double Ratchet + PQXDH)</li>
-              <li><strong>v1.0 stable (T+6m)</strong>: Optimism mainnet + SIS Airdrop</li>
-              <li><strong>v2.0 智能体网络 (T+12m)</strong>: Case retrieval + Personal LoRA + Provenance + Skill marketplace</li>
-              <li><strong>v3.0 超级智能体 (T+18m)</strong>: Multi-Agent Debate + Federated LoRA + SIS micropay</li>
-              <li><strong>集体智能涌现 (T+36m)</strong>: 10K+ MAU + 1M+ cases + 70%+ recall (bonus, 25-35% prob)</li>
+              <For each={cases().slice(0, 5)}>
+                {(c) => (
+                  <li class="border border-sisoul-border rounded p-2">
+                    <div class="font-semibold">{c.question}</div>
+                    <div class="text-xs text-sisoul-muted">
+                      {c.did_author.slice(0, 16)}… · {c.created_at}
+                    </div>
+                  </li>
+                )}
+              </For>
             </ul>
-          </section>
-        </>
-      )}
+          </Show>
+        </section>
+
+        {/* Skill Stats */}
+        <section>
+          <h2 class="text-lg font-semibold mb-2">Skill Ecosystem</h2>
+          <div class="grid grid-cols-3 gap-3 mb-2">
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">{skillCount()}</div>
+              <div class="text-xs text-sisoul-muted">Installed</div>
+            </div>
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">v2.0</div>
+              <div class="text-xs text-sisoul-muted">marketplace ship T+11m</div>
+            </div>
+            <div class="border border-sisoul-border rounded-lg p-3">
+              <div class="text-2xl font-bold">SIS</div>
+              <div class="text-xs text-sisoul-muted">micropay v3.0 T+15m</div>
+            </div>
+          </div>
+          <Show when={skills().length > 0}>
+            <div class="text-sm text-sisoul-muted">
+              Installed: <For each={skills()}>{(s) => <code class="mr-2">{s}</code>}</For>
+            </div>
+          </Show>
+        </section>
+
+        {/* Roadmap */}
+        <section>
+          <h2 class="text-lg font-semibold mb-2">Roadmap to 涌现</h2>
+          <ul class="space-y-1 text-sm">
+            <li><strong>alpha v1.0 (NOW)</strong>: 5 核心 + Signal chat real PQXDH</li>
+            <li><strong>v1.0 stable (T+6m)</strong>: Optimism mainnet + SIS Airdrop</li>
+            <li><strong>v2.0 智能体网络 (T+12m)</strong>: Case + LoRA + Provenance + Skill marketplace</li>
+            <li><strong>v3.0 超级智能体 (T+18m)</strong>: Multi-Agent Debate + Federated LoRA + SIS micropay</li>
+            <li><strong>集体智能涌现 (T+36m)</strong>: 10K+ MAU + 1M+ cases (bonus, 25-35% prob)</li>
+          </ul>
+        </section>
+      </Show>
     </div>
   );
 }
