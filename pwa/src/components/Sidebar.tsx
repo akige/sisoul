@@ -11,12 +11,19 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/", label: "Vault", icon: "◈" },
   { path: "/goals", label: "Goals", icon: "◎" },
   { path: "/chat-history", label: "History", icon: "◷" },
-  { path: "/settings", label: "Settings", icon: "◉" },
-  { path: "/advanced", label: "Advanced", icon: "◆" },
   { path: "/friends", label: "Friends", icon: "◍" },
   { path: "/skills", label: "Skills", icon: "◈" },
   { path: "/borrow", label: "Borrow", icon: "↙" },
   { path: "/lend", label: "Lend", icon: "↗" },
+  // v2 智能体网络 routes
+  { path: "/dashboard/v2", label: "v2 Dashboard", icon: "▸" },
+  { path: "/ask", label: "Ask", icon: "?" },
+  { path: "/debate", label: "Debate", icon: "⇄" },
+  { path: "/skills/v2", label: "v2 Skills", icon: "▸" },
+  { path: "/stats", label: "Stats", icon: "▤" },
+  { path: "/cheatsheet", label: "Cheatsheet", icon: "✎" },
+  { path: "/settings", label: "Settings", icon: "◉" },
+  { path: "/advanced", label: "Advanced", icon: "◆" },
 ];
 
 export default function Sidebar() {
