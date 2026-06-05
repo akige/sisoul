@@ -1,0 +1,27 @@
+# markdownlint config - opinionated but practical.
+# https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+default: true
+
+# Allow long lines (we use them in tables + URLs)
+MD013: false
+
+# Allow inline HTML (we use <details> + <kbd>)
+MD033: false
+
+# Allow first heading not at top (some docs have YAML frontmatter)
+MD041: false
+
+# Allow duplicate headings if in different sections
+MD024:
+  siblings_only: true
+
+# Allow no language on code blocks (sometimes we paste raw output)
+MD040: false
+
+# Don't enforce specific ATX style
+MD003: false
+
+# Allow trailing punctuation in headings (CJK punctuation)
+MD026:
+  punctuation: ".,;!?"
