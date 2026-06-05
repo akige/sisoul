@@ -5,10 +5,50 @@ build-backend = "hatchling.build"
 [project]
 name = "sisoul"
 version = "1.0.0-alpha"
-description = "Decentralized meta-layer protocol for AI workflow (vault + identity + portability + audit + P2P friend sharing). Internal dev, not published."
-authors = [{ name = "sisoul-internal" }]
+description = "Decentralized P2P AI agent protocol (did:key + kubo IPFS + Signal chat + sigstore release). Your AI agent, your data, your friends, no cloud."
+authors = [{ name = "sisoul maintainers" }]
+maintainers = [{ name = "sisoul maintainers" }]
 requires-python = ">=3.11"
 license = "Apache-2.0"
+readme = "README.md"
+keywords = [
+    "p2p", "decentralized", "ai-agent", "ipfs", "did", "self-sovereign-identity",
+    "signal-protocol", "post-quantum", "pqxdh", "double-ratchet",
+    "case-based-reasoning", "lora", "federated-learning", "multi-agent-debate",
+    "eas", "ethereum-attestation", "optimism", "sigstore",
+    "kubo", "libp2p", "gossipsub", "mdns",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Internet",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/sisoul/sisoul"
+Documentation = "https://github.com/sisoul/sisoul/tree/main/docs"
+Repository = "https://github.com/sisoul/sisoul"
+Issues = "https://github.com/sisoul/sisoul/issues"
+Changelog = "https://github.com/sisoul/sisoul/blob/main/CHANGELOG.md"
+PWA = "https://sisoul.github.io/sisoul-pwa/"
+Whitepaper = "https://github.com/sisoul/sisoul/blob/main/docs/whitepaper/sisoul-whitepaper-v1.0.md"
 dependencies = [
     "typer>=0.12.0",
     "pydantic>=2.5",
