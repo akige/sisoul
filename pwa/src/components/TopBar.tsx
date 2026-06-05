@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
 
 interface MobileNavItem {
@@ -9,17 +9,54 @@ interface MobileNavItem {
 const MOBILE_NAV: MobileNavItem[] = [
   { path: "/", label: "Vault" },
   { path: "/goals", label: "Goals" },
-  { path: "/chat-history", label: "History" },
-  { path: "/settings", label: "Settings" },
-  { path: "/advanced", label: "Advanced" },
   { path: "/friends", label: "Friends" },
   { path: "/skills", label: "Skills" },
-  { path: "/borrow", label: "Borrow" },
-  { path: "/lend", label: "Lend" },
+  { path: "/dashboard/v2", label: "v2 Dashboard" },
+  { path: "/ask", label: "Ask" },
+  { path: "/debate", label: "Debate" },
+  { path: "/skills/v2", label: "v2 Skills" },
+  { path: "/stats", label: "Stats" },
+  { path: "/cheatsheet", label: "Cheatsheet" },
+  { path: "/settings", label: "Settings" },
 ];
+
+const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE || "http://127.0.0.1:9876";
+
+interface DaemonHealth {
+  online: boolean;
+  version?: string;
+}
 
 export default function TopBar() {
   const [menuOpen, setMenuOpen] = createSignal(false);
+  const [health, setHealth] = createSignal<DaemonHealth>({ online: false });
+
+  const checkHealth = async () => {
+    try {
+      const r = await fetch(`${DAEMON_BASE}/sisoul/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setHealth({ online: true, version: data.version });
+      } else {
+        setHealth({ online: false });
+      }
+    } catch {
+      setHealth({ online: false });
+    }
+  };
+
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  onMount(() => {
+    checkHealth();
+    timer = setInterval(checkHealth, 15_000); // 15s poll
+  });
+
+  onCleanup(() => {
+    if (timer) clearInterval(timer);
+  });
 
   return (
     <header class="flex items-center h-14 px-4 border-b border-sisoul-border bg-sisoul-panel shrink-0 relative z-10">
@@ -35,8 +72,17 @@ export default function TopBar() {
       <span class="font-mono text-sisoul-accent font-bold md:hidden">sisoul</span>
 
       <div class="ml-auto flex items-center gap-3 text-sm text-sisoul-muted font-mono">
-        <span class="w-2 h-2 rounded-full bg-sisoul-success inline-block" />
-        <span>daemon ok</span>
+        <span
+          class="w-2 h-2 rounded-full inline-block transition-colors"
+          classList={{
+            "bg-sisoul-success": health().online,
+            "bg-red-500": !health().online,
+          }}
+          title={health().online ? `Daemon ok · ${health().version}` : "Daemon offline"}
+        />
+        <span>
+          {health().online ? `daemon ${health().version || "ok"}` : "daemon offline"}
+        </span>
       </div>
 
       {/* Mobile dropdown menu */}
