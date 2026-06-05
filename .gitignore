@@ -38,3 +38,6 @@ ops/release/.pyinstaller-build.log
 
 # Internal sprint orchestration prompts (not for public)
 .aws-us-task-*.md
+
+# Active plist files contain real secrets (newapi virtual key)
+ops/init/*-active.plist
