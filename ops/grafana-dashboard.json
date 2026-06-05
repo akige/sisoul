@@ -1,0 +1,97 @@
+{
+  "title": "sisoul daemon · alpha v1.0",
+  "uid": "sisoul-alpha",
+  "tags": ["sisoul", "alpha"],
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Daemon Up",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "up{job=\"sisoul\"}", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
+            { "options": { "1": { "text": "OK", "color": "green" } }, "type": "value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Cases Total",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_cases_total", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Skills Installed",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_skills_installed", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Friends",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_friends_total", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Cases Growth (rate over 1h)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(sisoul_cases_total[5m])", "refId": "A", "legendFormat": "cases/sec" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Skills Activity",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sisoul_skills_installed", "refId": "A", "legendFormat": "installed" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Petnames",
+      "gridPos": { "x": 0, "y": 12, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_petnames_total", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Lessons",
+      "gridPos": { "x": 6, "y": 12, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_lessons_total", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Growth Snapshot Days",
+      "gridPos": { "x": 12, "y": 12, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_growth_snapshot_days", "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Version",
+      "gridPos": { "x": 18, "y": 12, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sisoul_info", "refId": "A", "legendFormat": "{{version}}" }]
+    }
+  ]
+}

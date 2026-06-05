@@ -1,0 +1,50 @@
+# sisoul Prometheus alert rules. Drop into prometheus.yml or alertmanager rules dir.
+# Scrape config:
+#   - job_name: sisoul
+#     static_configs:
+#       - targets: ['127.0.0.1:9876']
+#     metrics_path: /sisoul/metrics
+#     scrape_interval: 30s
+
+groups:
+  - name: sisoul_health
+    interval: 1m
+    rules:
+      - alert: SisoulDaemonDown
+        expr: up{job="sisoul"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "sisoul daemon down (>2m)"
+          description: "instance {{ $labels.instance }} unreachable; daemon may have crashed or port blocked"
+
+      - alert: SisoulCasesUnusuallyHigh
+        expr: increase(sisoul_cases_total[1h]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "sisoul cases growing >50/hour"
+          description: "{{ $value }} cases added in past hour on {{ $labels.instance }} — investigate spam or rogue script"
+
+      - alert: SisoulSkillsRemoved
+        expr: sisoul_skills_installed < sisoul_skills_installed offset 1d
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "sisoul skills count dropped vs 24h ago"
+          description: "uninstall detected; may be user-initiated, just visibility"
+
+  - name: sisoul_health_meta
+    interval: 5m
+    rules:
+      - alert: SisoulVersionDrift
+        expr: sisoul_info{version!="1.0.0-alpha"} > 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "sisoul daemon running version {{ $labels.version }}"
+          description: "expected 1.0.0-alpha. May indicate post-launch upgrade or test deployment."
