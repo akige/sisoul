@@ -190,3 +190,18 @@ def test_sisoul_backup_no_vault(tmp_path):
     r = runner.invoke(app, ["backup", "--vault", str(nonexistent), "--out", str(out_path)])
     assert r.exit_code == 1
     assert not out_path.exists()
+
+
+def test_sisoul_self_check_skip_all():
+    r = runner.invoke(app, ["self-check", "--skip-daemon", "--skip-pytest"])
+    assert r.exit_code == 0
+    assert "alpha launch" in r.stdout.lower()
+
+
+def test_sisoul_self_check_json():
+    r = runner.invoke(app, ["self-check", "--skip-daemon", "--skip-pytest", "--json"])
+    assert r.exit_code == 0
+    import json as _json
+    data = _json.loads(r.stdout)
+    assert "checks" in data
+    assert "alpha_launch_ready" in data
