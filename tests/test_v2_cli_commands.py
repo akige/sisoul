@@ -164,3 +164,28 @@ def test_sisoul_friend_discover_help():
     r = runner.invoke(app, ["friend-discover", "--help"])
     assert r.exit_code == 0
     assert "mDNS" in r.stdout or "scan" in r.stdout
+
+
+def test_sisoul_backup_creates_zip(tmp_path):
+    # Setup a fake vault
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "dna.json").write_text('{"v": 1}')
+    (vault / "petnames.json").write_text("{}")
+    out = tmp_path / "backup.zip"
+
+    r = runner.invoke(app, ["backup", "--vault", str(vault), "--out", str(out)])
+    assert r.exit_code == 0, f"stdout: {r.stdout}\nexc: {r.exception}"
+    assert out.exists()
+    import zipfile
+    with zipfile.ZipFile(out) as zf:
+        names = zf.namelist()
+        assert any("dna.json" in n for n in names)
+        assert "sisoul-backup-manifest.json" in names
+
+
+def test_sisoul_backup_no_vault(tmp_path):
+    nonexistent = tmp_path / "no-vault"
+    r = runner.invoke(app, ["backup", "--vault", str(nonexistent), "--out", str(tmp_path / "b.zip")])
+    assert r.exit_code == 1
+    assert "vault not found" in r.stdout or "ERROR" in r.stdout
