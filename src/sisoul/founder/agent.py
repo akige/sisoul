@@ -43,6 +43,29 @@ class FounderAgent:
         self.vault = vault or FounderVault()
         self._llm_client = None  # lazy init
 
+    def _default_adapter(self):
+        """Try to resolve a default LLM adapter from env. Returns None on failure."""
+        provider = (self.config.provider or "").lower()
+        try:
+            if provider in ("newapi-freepool", "newapi", "free-pool"):
+                from sisoul.llm.newapi import NewapiAdapter
+                return NewapiAdapter()
+            if provider == "anthropic":
+                from sisoul.llm.anthropic import AnthropicAdapter
+                return AnthropicAdapter()
+            if provider == "openai":
+                from sisoul.llm.openai import OpenAIAdapter
+                return OpenAIAdapter()
+            if provider == "openrouter":
+                from sisoul.llm.openrouter import OpenRouterAdapter
+                return OpenRouterAdapter()
+            if provider == "gemini":
+                from sisoul.llm.gemini import GeminiAdapter
+                return GeminiAdapter()
+        except Exception:
+            return None
+        return None
+
     # ── prompt assembly ──────────────────────────────────────────────────────
 
     def build_prompt(self, user_question: str) -> dict:
@@ -83,6 +106,10 @@ class FounderAgent:
         prompt = self.build_prompt(user_question)
         recalled_ids = prompt["cases_recalled"]
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        # If caller didn't pass adapter, try to auto-resolve from config.provider
+        if adapter is None:
+            adapter = self._default_adapter()
 
         # Try real LLM
         if adapter is not None:
