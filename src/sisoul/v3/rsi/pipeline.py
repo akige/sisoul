@@ -134,12 +134,24 @@ def run_iteration(
         if mode == "godel":
             from sisoul.v3.rsi.godel_agent import GodelAgent
 
-            agent = GodelAgent(
-                daemon_ref=None,
-                llm_adapter=llm_adapter,
-                evaluator=evaluator,
+            # Load current system_prompt from vault as seed (round 10 fix:
+            # godel without vault read evolves in-memory DEFAULT only).
+            vault_prompt_file = _vault_dir() / "founder" / "system_prompt.md"
+            seed = (
+                vault_prompt_file.read_text()
+                if vault_prompt_file.exists()
+                else None
             )
-            result = agent.run_iteration(dry_run=dry_run)
+            agent_kw = {"daemon_ref": None, "llm_adapter": llm_adapter, "evaluator": evaluator}
+            if seed:
+                agent_kw["seed_prompt"] = seed
+            agent = GodelAgent(**agent_kw)
+            # GodelAgent.run_iteration takes (reflection, n), not dry_run.
+            # dry_run gate is applied here by checking 'applied' field below.
+            result = agent.run_iteration(reflection="", n=3)
+            # Persist best prompt back to vault if mutation was applied and not dry_run.
+            if not dry_run and result.get("applied") and result.get("best") and vault_prompt_file.exists():
+                vault_prompt_file.write_text(result["best"])
         elif mode == "alpha_evolve":
             if not target_module:
                 raise ValueError("alpha_evolve requires target_module")
