@@ -1,0 +1,41 @@
+# Docker build context exclusions.
+# Keeps image small + builds fast.
+
+.git/
+.github/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.idea/
+.vscode/
+tests/
+pwa/
+contracts/
+docs/
+obsidian-plugin/
+mobile/
+sdk/
+qa/
+ops/
+examples/
+sisoul-dev/
+.coverage
+htmlcov/
+.mac-temp/
+
+# Don't ship sensitive files
+.env
+.env.local
+*.secret
+*.key
+*.pem
+
+# Internal-only
+README-internal.md
+USER-WAKEUP-SUMMARY.md
+ALPHA-LAUNCH-CHECKLIST.md
