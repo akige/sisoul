@@ -1,3 +1,7 @@
 out/
 cache/
 broadcast/
+
+# Foundry-installed deps (forge install puts these here)
+lib/
+

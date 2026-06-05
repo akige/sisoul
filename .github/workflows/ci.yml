@@ -20,8 +20,7 @@ jobs:
           cache: pip
       - name: install
         run: |
-          pip install -e .
-          pip install pytest pytest-asyncio pytest-cov
+          pip install -e '.[dev,daemon,crypto,chat,llm,p2p,onchain]'
       - name: pytest
         run: pytest tests -q --tb=line --ignore=tests/test_v1_integration_full_user_journey.py
       - name: alpha e2e

@@ -82,13 +82,17 @@ class GodelAgent:
         )
         raw = self.llm_adapter.chat([{"role": "user", "content": meta_prompt}])
         text = str(raw or "").strip()
-        # Split by separator, then trim
-        parts = [p.strip() for p in text.split(sep) if p.strip()]
-        # Filter out the meta sep markdown fences
-        candidates = [p for p in parts if p and p not in ("```", "---")]
-        if not candidates:
-            # Fallback: try line-by-line (LLM may have ignored separator)
-            candidates = [ln.strip() for ln in text.splitlines() if ln.strip() and len(ln) > 50]
+        # If LLM used the separator (full multi-line variants), split by it.
+        if sep in text:
+            parts = [p.strip() for p in text.split(sep) if p.strip()]
+            candidates = [p for p in parts if p and p not in ("```", "---")]
+            if candidates:
+                return candidates[:n]
+        # Fallback: line-by-line (LLM ignored separator, e.g. mock or short outputs).
+        # Preserves backward compat with the original parsing + existing tests.
+        candidates = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        candidates = [c.lstrip("0123456789.-) ").strip() for c in candidates if c not in ("```", "---")]
+        candidates = [c for c in candidates if c]
         if not candidates:
             return [self._current_prompt]
         return candidates[:n]
