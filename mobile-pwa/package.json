@@ -1,0 +1,28 @@
+{
+  "name": "sisoul-mobile-pwa",
+  "version": "1.0.0-alpha",
+  "private": true,
+  "description": "sisoul iOS + Android wrapper for PWA via Capacitor 8 (no JS rewrite required).",
+  "scripts": {
+    "sync": "node copy-pwa.mjs && npx cap sync",
+    "add:ios": "npx cap add ios",
+    "add:android": "npx cap add android",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android",
+    "build:ios": "npx cap build ios",
+    "build:android": "npx cap build android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
+    "@capacitor/local-notifications": "^8.2.0",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.0"
+  }
+}

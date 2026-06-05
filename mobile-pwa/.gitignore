@@ -1,0 +1,19 @@
+node_modules/
+www/
+# iOS build artifacts (keep .xcodeproj + Podfile committed, ignore generated)
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+# Android build artifacts (keep gradle + manifest, ignore .gradle cache / build)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release/
+# Capacitor caches
+.capacitor/
+# IDE
+.idea/
+.vscode/
+*.iml
