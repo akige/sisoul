@@ -123,3 +123,38 @@ def test_sisoul_cheatsheet():
     assert "sisoul init" in r.stdout
     assert "sisoul demo" in r.stdout
     assert "sisoul invite" in r.stdout
+
+
+def test_sisoul_completion_bash():
+    r = runner.invoke(app, ["completion", "bash"])
+    assert r.exit_code == 0
+    assert "_sisoul_complete" in r.stdout
+    assert "complete -F" in r.stdout
+
+
+def test_sisoul_completion_zsh():
+    r = runner.invoke(app, ["completion", "zsh"])
+    assert r.exit_code == 0
+    assert "compdef" in r.stdout
+
+
+def test_sisoul_completion_fish():
+    r = runner.invoke(app, ["completion", "fish"])
+    assert r.exit_code == 0
+    assert "complete -c sisoul" in r.stdout
+
+
+def test_sisoul_completion_invalid():
+    r = runner.invoke(app, ["completion", "powershell"])
+    assert r.exit_code != 0
+
+
+def test_sisoul_completion_install(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    r = runner.invoke(app, ["completion", "bash", "--install"])
+    assert r.exit_code == 0
+    assert "OK installed" in r.stdout
+    target = tmp_path / ".bash_completion.d" / "sisoul"
+    assert target.exists()
+    content = target.read_text()
+    assert "_sisoul_complete" in content
