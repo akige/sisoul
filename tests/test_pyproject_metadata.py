@@ -74,10 +74,11 @@ def test_has_urls(pyproject):
 
 
 def test_dependencies_have_versions(pyproject):
-    deps = pyproject["project"]["dependencies"]
-    # all deps should have version spec (>=, ==, ~=, etc.)
+    deps = pyproject["project"].get("dependencies", [])
+    # all deps must have version spec (>=, ==, ~=, etc.)
     no_version = [d for d in deps if all(op not in d for op in ["==", ">=", "<=", "~=", "!="])]
     assert not no_version, f"unpinned deps: {no_version}"
+    assert len(deps) >= 5, f"expected >= 5 deps, got {len(deps)}"
 
 
 def test_optional_dependencies(pyproject):
