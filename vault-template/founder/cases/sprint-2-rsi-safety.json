@@ -1,0 +1,9 @@
+{
+  "id": "sprint-2-rsi-safety",
+  "question": "How does sisoul prevent RSI from going off the rails?",
+  "answer": "Four layered defenses, all shipped in src/sisoul/v3/rsi/. (1) SELF_PATH_GUARD constant in godel_agent.py — any RSI-proposed mutation that would modify src/sisoul/v3/rsi/ itself is rejected at apply time. This is the Gödel guard: the optimizer cannot improve its own safety check, eliminating the obvious self-undermining attack. (2) dry_run=true default everywhere — daemon endpoint, CLI command, PWA toggle all default to dry-run. The user must explicitly opt in to live mutation. (3) Evaluator.run_pytest gate — every candidate mutation must pass the existing test suite before being accepted. A mutation that improves prompt quality on the eval set but breaks 1 test is rejected. (4) safety_check() function in evaluator.py — greps proposed code mutations for dangerous patterns (rm -rf, eval(), exec(), subprocess unconstrained). False positives are OK; false negatives could be catastrophic. Beyond these four: an audit log appended to vault/rsi/history.jsonl for every iteration, with timestamp and provider used. The user can roll back any iteration with sisoul rsi rollback <iteration_id>. Together these enforce: RSI changes only the prompt; never the safety modules; only with passing tests; only with user consent; always with rollback path.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["rsi", "safety", "godel-agent", "alpha-evolve", "design"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "src/sisoul/v3/rsi/godel_agent.py SELF_PATH_GUARD + evaluator.py"
+}

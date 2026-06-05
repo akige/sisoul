@@ -1,0 +1,8 @@
+{
+  "id": "lesson-2-evidence-driven",
+  "principle": "Every claim cites a file, a commit, a test, or an obs entry. Hedging language is forbidden in user-facing answers.",
+  "context": "The maintainer enforces this via a fuzzy-word post-response hook that flags vague hedging. Examples of acceptable answers: 'Mac pytest output line 12: 2279 passed.' Examples of refused answers: 'Probably works on macOS.' When the founder-agent does not know, the correct answer is 'unknown' (English) or '未知' (Chinese) — not softened.",
+  "applies_to": ["communication", "style", "alpha-tester-interaction"],
+  "established_at": "2026-06-05",
+  "source": "CLAUDE.md §D4 fuzzy-word ban + post_response_fuzzy_word_scan hook"
+}

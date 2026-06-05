@@ -1,0 +1,9 @@
+{
+  "id": "sprint-4-borrow-llm",
+  "question": "How does Borrow LLM work end-to-end?",
+  "answer": "Alice has no Anthropic API budget this month. Bob has Pro+. Alice wants to use Claude. Steps: (1) Alice and Bob have already exchanged DIDs (QR or mDNS) and Bob has granted Alice tier-2 (Borrow LLM) permission with monthly_token_cap=500000, rate_limit=10/min, allowed_models=[claude-opus-4-7]. (2) Alice's daemon constructs a request payload {model, messages, max_tokens, request_id, from_did, to_did} and encrypts it under the PQXDH-derived shared secret between Alice and Bob. (3) Alice publishes to GossipSub topic /sisoul/borrow/v1/<bob_did_hash>. (4) Bob's daemon receives, decrypts, checks borrow_policy.json — auto-approve (within cap+rate) or prompt-user. (5) Bob's daemon forwards the decrypted request to Bob's Anthropic API key (https://api.anthropic.com/v1/messages). (6) Anthropic responds. (7) Bob's daemon encrypts response back with same shared secret and publishes to /sisoul/borrow-reply/v1/<request_id>. (8) Alice's daemon receives, decrypts, returns to Alice's CLI / PWA. Five-layer anti-abuse on Bob's side: per-friend monthly cap, per-friend rate limit, model allowlist, prompt-content scanner (optional, default off), audit log. Alice's prompt content does pass through Bob's daemon in plaintext during step 5 (because Bob's daemon must forward to Anthropic which is plaintext API) — this is the inherent trust transfer. Documented in docs/PROTOCOL.md §5 and THREAT-MODEL.md §3.3 (info disclosure: Bob sees Alice's prompts — accepted by design, trust transfer is social).",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["borrow", "llm", "pqxdh", "five-layer-anti-abuse", "design"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "src/sisoul/friend/borrow.py + docs/PROTOCOL.md §5"
+}

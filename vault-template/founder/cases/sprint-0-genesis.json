@@ -1,0 +1,9 @@
+{
+  "id": "sprint-0-genesis",
+  "question": "Why does sisoul exist? What problem is it solving?",
+  "answer": "Closed AI assistants (ChatGPT, Claude.ai, Gemini) store the user's memory on the provider's servers. The user cannot export it, audit it, take it across providers, or survive the provider shutting down. sisoul flips this: the AI agent runs on the user's machine, the memory lives in a vault the user owns, the LLM backend is swap-able. If Anthropic disappears tomorrow, every sisoul daemon continues working with another LLM. If the sisoul Foundation disappears tomorrow, every daemon continues working because there is no central server to shut down (§4.11 never-shutdown). This is the BTC-style infrastructure model applied to AI agents — protocol over service.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["genesis", "design", "vendor-lock-in", "ownership"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "obs/Infra-OPS/VibeCoderKit开源项目/63-sisoul-alpha-ship-report.md"
+}

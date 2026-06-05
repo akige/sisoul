@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "description": "Eval set for RSI loop. Founder-agent responses to these prompts are scored against expected_answer_contains keywords. RSI mutation must score >= baseline to be accepted.",
+  "prompts": [
+    {
+      "id": "eval-1-token",
+      "user_prompt": "Why doesn't sisoul have a token?",
+      "expected_answer_contains": ["§4.10", "never-token", "Tor", "governance capture"],
+      "weight": 2.0,
+      "category": "design-defense"
+    },
+    {
+      "id": "eval-2-rsi-risk",
+      "user_prompt": "What if RSI goes wrong and breaks my sisoul?",
+      "expected_answer_contains": ["dry_run", "SELF_PATH_GUARD", "rollback", "pytest gate"],
+      "weight": 2.0,
+      "category": "safety-explanation"
+    },
+    {
+      "id": "eval-3-borrow",
+      "user_prompt": "How does borrowing my friend's API key work without my friend seeing my prompts?",
+      "expected_answer_contains": ["PQXDH", "Bob's daemon", "plaintext", "trust transfer"],
+      "weight": 1.5,
+      "category": "honest-limit"
+    },
+    {
+      "id": "eval-4-am-i-claude",
+      "user_prompt": "Are you Claude?",
+      "expected_answer_contains": ["I am not Claude", "persona", "vault", "swap"],
+      "weight": 1.5,
+      "category": "self-introduction"
+    },
+    {
+      "id": "eval-5-install",
+      "user_prompt": "How do I install sisoul on my Mac?",
+      "expected_answer_contains": ["install.sh", "pip install sisoul", "self-check"],
+      "weight": 1.0,
+      "category": "onboarding"
+    },
+    {
+      "id": "eval-6-mls",
+      "user_prompt": "How is sisoul's group chat protected against future quantum computers?",
+      "expected_answer_contains": ["PQXDH", "ML-KEM-1024", "Double Ratchet", "hybrid"],
+      "weight": 1.5,
+      "category": "technical-explanation"
+    },
+    {
+      "id": "eval-7-vendor-lockin",
+      "user_prompt": "What happens to my sisoul if Anthropic shuts down Claude?",
+      "expected_answer_contains": ["LLM backend", "swap", "9 adapters", "vault stays"],
+      "weight": 2.0,
+      "category": "design-defense"
+    },
+    {
+      "id": "eval-8-bug-triage",
+      "user_prompt": "My sisoul daemon won't start. What do I do?",
+      "expected_answer_contains": ["sisoul self-check", "log", "GitHub issue", "minimal reproducer"],
+      "weight": 1.0,
+      "category": "support"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "sprint-1-never-token",
+  "question": "Why does sisoul refuse to issue a token?",
+  "answer": "Per whitepaper §4.10 (never-token). Three reasons: (1) Token-based DAOs (Compound, Uniswap, MakerDAO) all converge to large-holder governance capture — whales dominate vote outcomes and the protocol aligns its incentives with token holders rather than with users. sisoul's mission is users, so it must reject this alignment by construction. (2) Infrastructure protocols that survived decades — Tor (22 years), Mozilla (25 years), IETF (40 years), Apache (25 years), Linux (33 years) — funded themselves with grants, sponsorship, donations. None of them needed a token. The mental model 'we need a token to bootstrap' is a Web3 narrative, not a protocol-design necessity. (3) Once a token exists, the Foundation must defend its price, which becomes the dominant work — actual protocol improvement degrades. By committing to never-token, sisoul makes 'increase token price' an impossible goal, so all effort must go to user value. Funding flows to grants (Optimism RetroPGF, Gitcoin, EF), sponsorship, and donations. If those cannot sustain sisoul, the conclusion is 'build more value', not 'launch a token'.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["governance", "no-token", "design-principle", "section-4.10"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "docs/whitepaper/sisoul-v1.0-whitepaper.md §4.10"
+}

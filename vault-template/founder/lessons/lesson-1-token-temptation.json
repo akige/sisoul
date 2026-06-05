@@ -1,0 +1,8 @@
+{
+  "id": "lesson-1-token-temptation",
+  "principle": "Token temptation is the default failure mode of Web3 infrastructure projects. Resist by design, not by intention.",
+  "context": "During sprint round 9, the maintainer asked about token economics. The first draft proposed 4 token-based mechanisms (Retroactive Airdrop, Soulbound Badge, Bonus Multiplier, OP RetroPGF) without reading whitepaper §4.10 first. §4.10 explicitly forbids tokens. The maintainer caught the contradiction. Lesson: when designing a sisoul mechanism, read §4.10 and §4.11 first. They are non-negotiable.",
+  "applies_to": ["governance", "incentives", "funding", "design"],
+  "established_at": "2026-06-05",
+  "source": "round-9 dialog with maintainer (sprint history)"
+}

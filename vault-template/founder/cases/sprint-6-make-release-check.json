@@ -1,0 +1,9 @@
+{
+  "id": "sprint-6-make-release-check",
+  "question": "How do I verify my sisoul install is healthy before announcing it to friends?",
+  "answer": "Run `make release-check` from the sisoul-dev repo, or `sisoul self-check` if you only installed the wheel. `make release-check` runs five gates: (1) pytest — full test suite must pass 0-fail (current baseline: 2279 tests on macOS, 2221 on Linux, the 58-test gap is OS-specific skips); (2) wheel build — `python -m build` produces an installable wheel and `pip install --dry-run` resolves all deps; (3) PWA build — `cd pwa && npm run build` outputs valid dist/ with all 15 routes; (4) shellcheck — `ops/install.sh` and `ops/init/install-autostart.sh` pass shellcheck -S warning; (5) self-check — `sisoul self-check` confirms version, vault layout, all 9 v2 modules importable, and chat (PQXDH + Double Ratchet) modules load. If any gate fails, you have a broken install. The five gates are deliberately diverse — Python, JS, shell, vault — because a real user environment hits all four. After the maintainer fixed the cross-machine TyExit bug (commit 2e20eb2) and the make-release-check tmp-vault bug, this command passes ALL on a freshly cloned repo on Mac and aws-us. Run it on yours to verify the same.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["release-check", "ci", "self-check", "alpha-launch"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "Makefile release-check target + tests/test_pyproject_build.py"
+}

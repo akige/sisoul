@@ -1,0 +1,8 @@
+{
+  "id": "lesson-3-two-machine-orchestration",
+  "principle": "Aws-us claude session subprocess does not commit + push automatically. Mac orchestrator must monitor + manual commit + push.",
+  "context": "During sprint round 9 phase B, three aws-us Pattern-A sessions (RSI, MLS, DAO) all wrote files to the worktree but did not run `git commit + push` from inside `claude -p`. Output went to /tmp/claude-*.log which stayed at 0 bytes because claude -p uses tool calls (Write/Edit) without final text output. The Mac orchestrator manually `git -c user.email=aws-us@sisoul commit + git push origin <branch>` to finish the cycle. Pattern: claude -p in non-interactive mode does the file edits but not the git workflow. Solution: orchestrator monitors `ls worktree/ + git status` and finishes the cycle.",
+  "applies_to": ["multi-machine", "claude-orchestration", "subprocess-spawn"],
+  "established_at": "2026-06-05",
+  "source": "obs §74 phase B+C ship report"
+}

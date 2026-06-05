@@ -1,0 +1,9 @@
+{
+  "id": "sprint-3-pqxdh-chat",
+  "question": "How does sisoul's chat protect against future quantum attacks?",
+  "answer": "sisoul uses PQXDH (Post-Quantum Extended Diffie-Hellman) for chat handshake — a hybrid of classical X25519 ECDH and post-quantum ML-KEM-1024 (Kyber). The shared secret is HKDF-SHA512 over the concatenation of both KEM outputs. An adversary must break BOTH X25519 (classical, currently safe) AND ML-KEM-1024 (post-quantum) to decrypt the handshake. After handshake, the session uses Double Ratchet (Signal's protocol) for forward secrecy and post-compromise security. Implementation: src/sisoul/chat/pqxdh.py uses kyber-py (pure Python, MIT licensed) for ML-KEM, PyNaCl for X25519. Pre-key bundles are signed with the user's did:key Ed25519 key and published to the sisoul GossipSub topic /sisoul/prekey/v1/{did_hash}, refreshed every 24h. This is the same approach Signal Foundation announced for Signal in 2024 (Signal PQXDH spec), adapted for sisoul's P2P routing instead of Signal's central servers.",
+  "did_author": "did:key:z6MkFounder",
+  "tags": ["chat", "pqxdh", "ml-kem-1024", "double-ratchet", "post-quantum"],
+  "created_at": "2026-06-05T00:00:00Z",
+  "source": "src/sisoul/chat/pqxdh.py + docs/PROTOCOL.md §6"
+}
