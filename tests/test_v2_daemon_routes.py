@@ -229,3 +229,52 @@ def test_v2_lesson_distill_too_few_cases(v2_more_app):
         "did_owner": "did:key:z6MkA", "source_case_ids": ["only-one"],
     })
     assert r.status_code == 400
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# v2 LoRA routes (Personal + Federated)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_v2_lora_train(v2_more_app):
+    r = v2_more_app.post("/v2/lora/train", json={
+        "did_owner": "did:key:z6MkAlice",
+        "rank": 16,
+        "epochs": 2,
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["rank"] == 16
+    assert data["epoch_count"] == 2
+    assert "alice" in data["adapter_name"].lower() or "personal" in data["adapter_name"]
+
+
+def test_v2_lora_train_invalid_did(v2_more_app):
+    r = v2_more_app.post("/v2/lora/train", json={"did_owner": "not-did"})
+    assert r.status_code == 400
+
+
+def test_v2_lora_federate(v2_more_app):
+    r = v2_more_app.post("/v2/lora/federate", json={
+        "aggregator_did": "did:key:z6MkAggregator",
+        "peer_deltas": [
+            {"did": "did:key:z6MkBob", "delta": "stub"},
+            {"did": "did:key:z6MkCarol", "delta": "stub"},
+        ],
+        "round_id": 1,
+        "min_participants": 2,
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["delta_count"] == 2
+    assert data["round_id"] == 1
+    assert "did:key:z6MkBob" in data["participants"]
+
+
+def test_v2_lora_federate_too_few(v2_more_app):
+    r = v2_more_app.post("/v2/lora/federate", json={
+        "aggregator_did": "did:key:z6MkA",
+        "peer_deltas": [{"did": "did:key:z6MkB", "delta": "stub"}],
+        "min_participants": 3,
+    })
+    assert r.status_code == 400

@@ -203,3 +203,83 @@ def lesson_distill(req: CompactRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     from dataclasses import asdict
     return asdict(lesson)
+
+
+# ── /v2/lora (Personal LoRA + Federated) ──────────────────────────────────
+
+from sisoul.v2.personal_lora import (
+    LoRAAdapter, TrainingConfig, PersonalLoRATrainer,
+    FederatedLoRAConfig, FederatedLoRAAggregator,
+)
+
+
+class LoRATrainRequest(BaseModel):
+    did_owner: str
+    rank: int = 16
+    epochs: int = 3
+    base_model: str = "meta-llama/Llama-3.1-8B"
+
+
+@router.post("/lora/train")
+def lora_train(req: LoRATrainRequest) -> dict:
+    """v2.0 personal LoRA train (foundation: stub)."""
+    if not req.did_owner.startswith("did:key:"):
+        raise HTTPException(status_code=400, detail="invalid did_owner")
+    cfg = TrainingConfig(rank=req.rank, epochs=req.epochs, base_model=req.base_model)
+    trainer = PersonalLoRATrainer(cfg, did_owner=req.did_owner)
+    out_path = f"/tmp/sisoul-lora-{req.did_owner[-8:]}.safetensors"
+    result = trainer.train(out_path)
+    return {
+        "adapter_name": result.adapter.name,
+        "rank": result.adapter.rank,
+        "size_bytes": result.adapter.size_bytes,
+        "file_path": result.adapter.file_path,
+        "epoch_count": result.epoch_count,
+        "train_loss_final": result.train_loss_final,
+    }
+
+
+class FederatedRequest(BaseModel):
+    aggregator_did: str
+    base_adapter_name: str = "personal-base"
+    base_model: str = "meta-llama/Llama-3.1-8B"
+    rank: int = 16
+    peer_deltas: list[dict]  # [{"did": "did:key:z6Mk...", "delta": "<stub>"}]
+    round_id: int = 1
+    min_participants: int = 2
+
+
+@router.post("/lora/federate")
+def lora_federate(req: FederatedRequest) -> dict:
+    """v3.0 federated LoRA aggregation (foundation: FedAvg stub)."""
+    if not req.aggregator_did.startswith("did:key:"):
+        raise HTTPException(status_code=400, detail="invalid aggregator_did")
+
+    cfg = FederatedLoRAConfig(min_participants=req.min_participants)
+    agg = FederatedLoRAAggregator(cfg, aggregator_did=req.aggregator_did)
+
+    base = LoRAAdapter(
+        name=req.base_adapter_name,
+        version="0.1",
+        base_model=req.base_model,
+        rank=req.rank,
+        file_path=f"/tmp/sisoul-base-{req.base_adapter_name}.safetensors",
+        size_bytes=20_000_000,
+        did_owner=req.aggregator_did,
+        trained_at="2026-06-04",
+    )
+
+    try:
+        new_adapter, fed_round = agg.federate(base, req.peer_deltas, round_id=req.round_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "new_adapter_name": new_adapter.name,
+        "rank": new_adapter.rank,
+        "round_id": fed_round.round_id,
+        "delta_count": fed_round.delta_count,
+        "participants": fed_round.participants,
+        "aggregator_did": fed_round.aggregator_did,
+        "aggregated_at": fed_round.aggregated_at,
+    }
