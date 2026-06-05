@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- macOS launchd plist for daily RSI suggester.
+         Runs once a day at 8am local time. Writes candidates to
+         $SISOUL_VAULT/founder/rsi/candidates-<date>.json for human review.
+
+         Install:
+             cp this file to ~/Library/LaunchAgents/io.sisoul.rsi-daily.plist
+             # edit REPLACE_ markers
+             launchctl load ~/Library/LaunchAgents/io.sisoul.rsi-daily.plist
+    -->
+    <key>Label</key>
+    <string>io.sisoul.rsi-daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/REPLACE_VENV_PATH/bin/python</string>
+        <string>/REPLACE_REPO_PATH/ops/scripts/rsi-daily-suggest.py</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SISOUL_VAULT</key>
+        <string>/REPLACE_VAULT_PATH</string>
+        <key>SISOUL_NEWAPI_API_KEY</key>
+        <string>REPLACE_NEWAPI_VIRTUAL_KEY</string>
+        <key>SISOUL_NEWAPI_BASE_URL</key>
+        <string>http://127.0.0.1:4000/v1</string>
+        <key>SISOUL_NEWAPI_MODEL</key>
+        <string>copilot-gpt-4.1</string>
+        <key>SISOUL_RSI_N_CANDIDATES</key>
+        <string>3</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/sisoul-rsi-daily.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/sisoul-rsi-daily.err.log</string>
+</dict>
+</plist>

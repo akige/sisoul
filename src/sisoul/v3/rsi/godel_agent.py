@@ -71,17 +71,24 @@ class GodelAgent:
             n 个候选 prompt 字符串. LLM 返回非预期格式时尽量降级解析,
             最坏返回 [current_prompt] (no-op, 保证不退化).
         """
+        sep = "===VARIANT==="
         meta_prompt = (
-            "You are optimizing the SYSTEM PROMPT of an AI agent.\n"
+            "You are optimizing the SYSTEM PROMPT of an AI agent. The prompt is multi-line markdown.\n"
             f"Current prompt:\n---\n{self._current_prompt}\n---\n"
             f"Reflection on weaknesses:\n{reflection}\n\n"
-            f"Propose {n} improved variants, one per line, no numbering, no commentary."
+            f"Propose {n} improved full variants. Each variant is a COMPLETE replacement prompt (multi-line OK).\n"
+            f"Separate variants with the line '{sep}' on its own line.\n"
+            f"Output {n} variants in total, no numbering, no commentary outside variants."
         )
         raw = self.llm_adapter.chat([{"role": "user", "content": meta_prompt}])
-        candidates = [ln.strip() for ln in str(raw).splitlines() if ln.strip()]
-        # 去掉可能的 markdown 围栏 / 编号残留
-        candidates = [c.lstrip("0123456789.-) ").strip() for c in candidates if c not in ("```", "---")]
-        candidates = [c for c in candidates if c]
+        text = str(raw or "").strip()
+        # Split by separator, then trim
+        parts = [p.strip() for p in text.split(sep) if p.strip()]
+        # Filter out the meta sep markdown fences
+        candidates = [p for p in parts if p and p not in ("```", "---")]
+        if not candidates:
+            # Fallback: try line-by-line (LLM may have ignored separator)
+            candidates = [ln.strip() for ln in text.splitlines() if ln.strip() and len(ln) > 50]
         if not candidates:
             return [self._current_prompt]
         return candidates[:n]
