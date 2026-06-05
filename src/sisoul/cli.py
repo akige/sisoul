@@ -299,6 +299,11 @@ from sisoul.cli_commands.chat import chat_app  # noqa: E402
 
 app.add_typer(chat_app, name="chat")
 
+# ── mls (L2 群聊 · RFC 9420 Messaging Layer Security, >2 人) ──────────────────
+from sisoul.cli_commands.chat_mls import cli_mls  # noqa: E402
+
+app.add_typer(cli_mls, name="mls", help="MLS group chat (>2 people)")
+
 # ── rsi (v3 RSI 框架 skeleton · Gödel/AlphaEvolve/DSPy/Federated) ─────────────
 from sisoul.cli_commands.v3_rsi import cli_rsi  # noqa: E402
 
