@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd plist: ~/Library/LaunchAgents/com.sisoul.daemon.plist
+     Install: cp this to ~/Library/LaunchAgents/ + launchctl bootstrap -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sisoul.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/USER/.local/bin/sisoul</string>
+        <string>daemon</string>
+        <string>start</string>
+        <string>--foreground</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/USER/.sisoul/logs/daemon.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/.sisoul/logs/daemon.err.log</string>
+</dict>
+</plist>

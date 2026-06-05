@@ -1,0 +1,20 @@
+# systemd unit: ~/.config/systemd/user/sisoul-daemon.service
+# Install: systemctl --user enable --now sisoul-daemon
+[Unit]
+Description=sisoul daemon — local AI agent + P2P bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment="SISOUL_VAULT=%h/.sisoul"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=%h/.local/bin/sisoul daemon start --foreground
+Restart=on-failure
+RestartSec=5s
+# Resource limits (single-user, NOT system service)
+MemoryMax=2G
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

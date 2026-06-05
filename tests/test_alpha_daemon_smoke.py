@@ -156,3 +156,78 @@ def test_real_daemon_full_v2_route_count(real_daemon):
     paths = r.json().get("paths", {})
     v2_paths = [p for p in paths if p.startswith("/v2/")]
     assert len(v2_paths) >= 10, f"expected ≥10 v2 paths, got: {v2_paths}"
+
+
+def test_real_daemon_full_ask_pipeline_e2e(real_daemon):
+    """End-to-end ask pipeline via real daemon HTTP (4-C.3):
+    case write → search → attest → reputation update → routing → growth → lesson distill.
+    全 v2 模块协作 真 HTTP.
+    """
+    # 1. Alice writes case
+    r = httpx.post(f"{real_daemon}/v2/case", json={
+        "question": "how to fix Rust async tokio deadlock",
+        "answer": "use unwrap_or_else and proper Drop impl",
+        "did_author": "did:key:z6MkAlice",
+        "tags": ["rust", "async"],
+    }, timeout=5)
+    assert r.status_code == 200
+    alice_case_id = r.json()["id"]
+
+    # 2. Bob searches
+    s = httpx.get(f"{real_daemon}/v2/case/search/?q=rust+async", timeout=5)
+    assert s.status_code == 200
+    hits = s.json()["cases"]
+    assert any(c["id"] == alice_case_id for c in hits)
+
+    # 3. Bob attests provenance (cites Alice)
+    a = httpx.post(f"{real_daemon}/v2/provenance/attest", json={
+        "response_id": "bob-resp-1",
+        "query": "rust async tokio",
+        "answer": "follow Alice pattern + cancellation token",
+        "did_answerer": "did:key:z6MkBob",
+        "cited_cases": [{"source_id": alice_case_id, "did_author": "did:key:z6MkAlice"}],
+        "network": "mock",
+    }, timeout=5)
+    assert a.status_code == 200
+    assert a.json()["citation_count"] == 1
+
+    # 4. Update Alice's rust reputation
+    u = httpx.post(f"{real_daemon}/v2/reputation/update", json={
+        "did": "did:key:z6MkAlice", "topic": "rust", "score_delta": 0.1,
+    }, timeout=5)
+    assert u.status_code == 200
+    assert u.json()["new_score"] >= 0.6
+
+    # 5. Top-k routing for next rust query
+    t = httpx.post(f"{real_daemon}/v2/reputation/top-k", json={
+        "query": "another rust q",
+        "topic": "rust",
+        "candidates": ["did:key:z6MkAlice", "did:key:z6MkRand"],
+        "top_k": 2,
+    }, timeout=5)
+    assert t.status_code == 200
+    assert "did:key:z6MkAlice" in t.json()["picked"]
+
+    # 6. Record growth snapshot
+    g = httpx.post(f"{real_daemon}/v2/growth/write", json={
+        "date": "2026-06-04", "cases_added": 1, "chats_sent": 5,
+    }, timeout=5)
+    assert g.status_code == 200
+    trend = httpx.get(f"{real_daemon}/v2/growth/last?n=1", timeout=5)
+    assert trend.json()["total_cases"] >= 1
+
+    # 7. Distill lesson from 2+ cases
+    r2 = httpx.post(f"{real_daemon}/v2/case", json={
+        "question": "another async case",
+        "answer": "second answer",
+        "did_author": "did:key:z6MkBob",
+    }, timeout=5)
+    second_id = r2.json()["id"]
+    l = httpx.post(f"{real_daemon}/v2/lesson/distill", json={
+        "did_owner": "did:key:z6MkBob",
+        "source_case_ids": [alice_case_id, second_id],
+        "topic": "rust",
+    }, timeout=5)
+    assert l.status_code == 200
+    assert l.json()["id"].startswith("lesson-")
+    # 全 v2 模块 真 HTTP 链路验通

@@ -101,9 +101,11 @@ app.add_typer(sync_app, name="sync")
 
 
 # ── remember (W11, dev-A) ────────────────────────────────────────────────────
-from sisoul.cli_commands.remember import cli_remember  # noqa: E402
+from sisoul.cli_commands.remember import cli_remember
+from sisoul.cli_commands.stats import cli_stats  # noqa: E402
 
 app.command("remember")(cli_remember)
+app.command("stats")(cli_stats)
 
 
 # ── status (W3, dev-A) ───────────────────────────────────────────────────────
