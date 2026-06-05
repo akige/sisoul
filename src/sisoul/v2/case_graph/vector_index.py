@@ -1,28 +1,37 @@
 """Vector embedding index for case retrieval.
 
-Foundation: pure Python TF-IDF fallback (zero deps).
-Future (v2.0 ship): swap to ChromaDB / FAISS / sentence-transformers.
+Two implementations:
+- TfIdfIndex: pure-Python TF-IDF (zero deps, deterministic, CI-safe).
+- ChromaIndex: ChromaDB + sentence-transformers (real semantic search).
+
+Factory `make_index(prefer="auto"|"tfidf"|"chroma")` picks based on env + dep availability.
 """
 from __future__ import annotations
 import math
+import os
 import re
 from collections import Counter
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Protocol
 
 from .schema import Case
 
 
-class TfIdfIndex:
-    """Tiny TF-IDF index. Foundation impl, full impl swaps to embedding model.
+class CaseIndex(Protocol):
+    def add(self, case: Case) -> None: ...
+    def remove(self, case_id: str) -> None: ...
+    def search(self, query: str, top_k: int = 5, threshold: float = 0.0) -> list[tuple[str, float]]: ...
+    def size(self) -> int: ...
 
-    Why TF-IDF foundation: zero deps, works in CI, deterministic.
-    """
+
+class TfIdfIndex:
+    """TF-IDF foundation. Zero deps, deterministic."""
 
     _word_re = re.compile(r"\b[a-zA-Z_][a-zA-Z_0-9]+\b", re.U)
 
     def __init__(self):
-        self._docs: dict[str, dict[str, int]] = {}  # case_id → {term: tf}
-        self._df: Counter = Counter()  # term → doc count
+        self._docs: dict[str, dict[str, int]] = {}
+        self._df: Counter = Counter()
         self._N: int = 0
 
     @classmethod
@@ -87,4 +96,97 @@ class TfIdfIndex:
         return self._N
 
 
-__all__ = ["TfIdfIndex"]
+class ChromaIndex:
+    """ChromaDB + sentence-transformers semantic index.
+
+    Lazy-imports chromadb + sentence_transformers — they may not be installed
+    in CI / minimal envs (chromadb is ~200MB with all-MiniLM-L6-v2 model).
+    """
+
+    DEFAULT_MODEL = "all-MiniLM-L6-v2"  # 80MB, 384-dim, MTEB ok-tier
+    COLLECTION_NAME = "sisoul_cases_v1"
+
+    def __init__(
+        self,
+        persist_dir: Optional[Path] = None,
+        model_name: str = DEFAULT_MODEL,
+    ):
+        import chromadb
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+        self.persist_dir = persist_dir or Path.home() / ".sisoul" / "chroma"
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.model_name = model_name
+        self._client = chromadb.PersistentClient(path=str(self.persist_dir))
+        self._embed_fn = SentenceTransformerEmbeddingFunction(model_name=model_name)
+        self._collection = self._client.get_or_create_collection(
+            name=self.COLLECTION_NAME,
+            embedding_function=self._embed_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
+
+    @staticmethod
+    def _doc_text(case: Case) -> str:
+        return (case.question or "") + "\n" + (case.answer or "") + "\n" + " ".join(case.tags or [])
+
+    def add(self, case: Case) -> None:
+        text = self._doc_text(case)
+        if not text.strip():
+            return
+        self._collection.upsert(
+            ids=[case.id],
+            documents=[text],
+            metadatas=[{"tags": ",".join(case.tags or [])}],
+        )
+
+    def remove(self, case_id: str) -> None:
+        try:
+            self._collection.delete(ids=[case_id])
+        except Exception:
+            pass
+
+    def search(self, query: str, top_k: int = 5, threshold: float = 0.0) -> list[tuple[str, float]]:
+        if not query.strip():
+            return []
+        n = self._collection.count()
+        if n == 0:
+            return []
+        result = self._collection.query(
+            query_texts=[query],
+            n_results=min(top_k, n),
+        )
+        ids = result.get("ids", [[]])[0]
+        distances = result.get("distances", [[]])[0]
+        # ChromaDB cosine distance → similarity
+        out = []
+        for cid, dist in zip(ids, distances):
+            sim = max(0.0, 1.0 - float(dist))
+            if sim > threshold:
+                out.append((cid, sim))
+        return out
+
+    def size(self) -> int:
+        return self._collection.count()
+
+
+def make_index(prefer: str = "auto") -> CaseIndex:
+    """Pick the best available index.
+
+    prefer:
+    - "tfidf": always TfIdfIndex (CI / deterministic).
+    - "chroma": ChromaIndex; raises ImportError if chromadb not installed.
+    - "auto" (default): respect SISOUL_VECTOR_BACKEND env; else try chroma, fallback tfidf.
+    """
+    env = os.environ.get("SISOUL_VECTOR_BACKEND", "").lower()
+    if prefer == "tfidf" or env == "tfidf":
+        return TfIdfIndex()
+    if prefer == "chroma" or env == "chroma":
+        return ChromaIndex()
+    # auto
+    try:
+        return ChromaIndex()
+    except (ImportError, ModuleNotFoundError):
+        return TfIdfIndex()
+
+
+__all__ = ["TfIdfIndex", "ChromaIndex", "CaseIndex", "make_index"]
