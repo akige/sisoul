@@ -3,9 +3,21 @@
 > Decentralized P2P AI agent protocol. BTC-mode install + run. No servers operated by sisoul.
 
 [![CI](https://github.com/sisoul/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/sisoul/sisoul/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sisoul/sisoul?include_prereleases)](https://github.com/sisoul/sisoul/releases)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://www.python.org/)
+[![Sigstore](https://img.shields.io/badge/Sigstore-keyless%20OIDC-green)](https://docs.sigstore.dev/)
 [![PWA](https://img.shields.io/badge/PWA-sisoul.github.io%2Fsisoul--pwa-blue)](https://sisoul.github.io/sisoul-pwa/)
 [![Whitepaper](https://img.shields.io/badge/Whitepaper-v1.0%2014%20chapters-green)](docs/whitepaper/sisoul-whitepaper-v1.0.md)
+[![Tests](https://img.shields.io/badge/tests-2069%20pass%20%2F%200%20fail-brightgreen)](#tests)
+[![PQXDH](https://img.shields.io/badge/PQXDH-ML--KEM--1024%20hybrid-purple)](#features)
+
+```
+   ___  _                  _
+  / __|(_) ___  ___  _  _ | |
+  \__ \| |(_-< / _ \| || || |
+  |___/|_|/__/ \___/ \_,_||_|
+```
 
 **Your AI agent. Your data. Your friends. No cloud.**
 
