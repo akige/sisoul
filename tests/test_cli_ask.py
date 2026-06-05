@@ -14,8 +14,9 @@ import pytest
 from sisoul.cli_commands.ask import run_ask
 from sisoul.llm.base import LLMAdapterError
 
-# typer.Exit 是 click.exceptions.Exit
-TyExit = click.exceptions.Exit
+# typer.Exit — 跨 typer 0.12 / 0.26 (vendored click) reproducible.
+import typer as _typer
+TyExit = _typer.Exit
 
 
 def _make_mock_adapter(response: str = "test response") -> MagicMock:
