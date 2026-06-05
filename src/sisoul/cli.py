@@ -309,5 +309,10 @@ from sisoul.cli_commands.v3_rsi import cli_rsi  # noqa: E402
 
 app.add_typer(cli_rsi, name="rsi")
 
+# ── founder (Round 10 · @founder agent) ──────────────────────────────────────
+from sisoul.cli_commands.founder import cli_founder  # noqa: E402
+
+app.add_typer(cli_founder, name="founder", help="sisoul founder-agent (@founder)")
+
 if __name__ == "__main__":
     app()
