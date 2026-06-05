@@ -87,10 +87,14 @@ release-check:  ## pre-release validation (test + build + pwa + shellcheck + sel
 	@$(MAKE) pwa
 	@echo "=== shellcheck ==="
 	@$(MAKE) shellcheck
-	@echo "=== self-check (offline) ==="
-	@$(SISOUL) self-check --skip-daemon --skip-pytest
+	@echo "=== self-check (offline, tmp vault) ==="
+	@TMPVAULT=$$(mktemp -d) && \
+		echo '{"sisoul_version":"1.0.0-alpha","schema_version":2}' > $$TMPVAULT/dna.json && \
+		echo '{}' > $$TMPVAULT/petnames.json && \
+		SISOUL_VAULT=$$TMPVAULT $(SISOUL) self-check --skip-daemon --skip-pytest && \
+		rm -rf $$TMPVAULT
 	@echo ""
-	@echo "✓ All release checks pass. Ready to: git tag v$$(cat VERSION) && git push origin v$$(cat VERSION)"
+	@echo "OK All release checks pass. Ready to: git tag v$$(cat VERSION) && git push origin v$$(cat VERSION)"
 
 clean:  ## remove build artifacts + caches
 	rm -rf build/ dist/ *.egg-info src/*.egg-info
