@@ -89,7 +89,7 @@ class NewapiAdapter(LLMAdapter):
         except Exception as e:
             raise LLMAdapterError(f"newapi.chat failed: {type(e).__name__}: {e}") from e
 
-    def stream(
+    def chat_stream(
         self,
         messages: list[dict],
         model: Optional[str] = None,
