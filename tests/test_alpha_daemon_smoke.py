@@ -271,3 +271,19 @@ def test_real_daemon_sisoul_health_cli(real_daemon):
     assert "daemon health" in res.stdout
     assert "ok" in res.stdout
     assert "v2 routes" in res.stdout
+
+
+def test_real_daemon_sisoul_demo_cli(real_daemon):
+    """sisoul demo runs full 8-step v2 chain against real daemon."""
+    import subprocess, sys
+    res = subprocess.run(
+        [sys.executable, "-c",
+         "from sisoul.cli_commands.demo import cli_demo; import typer; typer.run(cli_demo)",
+         "--base", real_daemon, "--delay", "0.05"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert res.returncode == 0, f"demo CLI failed: {res.stderr}\nstdout: {res.stdout}"
+    assert "Step 1:" in res.stdout
+    assert "Step 8:" in res.stdout
+    assert "Demo complete" in res.stdout
+    assert "alice" in res.stdout.lower()
