@@ -1,0 +1,20 @@
+{
+  "name": "@sisoul/founder-mcp",
+  "version": "1.0.0-alpha",
+  "description": "MCP server that exposes sisoul founder-agent to any MCP-capable AI client (paseo+claude, codex, gemini-cli).",
+  "type": "module",
+  "main": "server.mjs",
+  "bin": {
+    "sisoul-founder-mcp": "server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/server.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "license": "Apache-2.0",
+  "repository": "https://github.com/akige/sisoul",
+  "keywords": ["sisoul", "mcp", "founder-agent", "ai-agent", "persona"]
+}
