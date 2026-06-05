@@ -273,8 +273,8 @@ def daemon(
     """启动 sisoul daemon (Phase 1 W2 ship)."""
     from sisoul.daemon import run_daemon
 
-    typer.echo(f"sisoul daemon starting on http://{host}:{port} ...")
-    typer.echo(f"  GET http://{host}:{port}/sisoul/health")
+    from sisoul.banner import print_banner
+    print_banner(host, port)
     run_daemon(host=host, port=port)
 
 
