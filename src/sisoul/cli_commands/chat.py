@@ -260,17 +260,10 @@ def cmd_export_prekey(
     Run this on your machine, send the file to your friend out-of-band,
     they run `sisoul chat cache-peer <file>` to install it.
     """
-    import base64
     mgr = _build_manager(memory)
     bundle = mgr.rotate_prekey()
-    payload = {
-        "did": mgr.local_did,
-        "issued_at": bundle.issued_at,
-        "signed_pre_key": base64.b64encode(bundle.signed_pre_key).decode(),
-        "signed_pre_key_sig": base64.b64encode(bundle.signed_pre_key_sig).decode(),
-        "mlkem_pub": base64.b64encode(bundle.mlkem_pub).decode(),
-        "version": 1,
-    }
+    payload = bundle.to_dict()
+    payload["version"] = 1
     if out:
         out.write_text(json.dumps(payload, indent=2))
         typer.echo(f"OK PreKey bundle exported to {out}")
@@ -286,7 +279,6 @@ def cmd_cache_peer(
     memory: bool = typer.Option(False, "--memory"),
 ) -> None:
     """Import a friend's PreKey bundle so you can chat with them."""
-    import base64
     from sisoul.chat.pqxdh import PreKeyBundle
     try:
         payload = json.loads(bundle_file.read_text())
@@ -296,13 +288,15 @@ def cmd_cache_peer(
     try:
         bundle = PreKeyBundle(
             did=payload["did"],
+            x25519_pub=bytes.fromhex(payload["x25519_pub"]),
+            mlkem_pub=bytes.fromhex(payload["mlkem_pub"]),
+            signed_pre_key_pub=bytes.fromhex(payload["signed_pre_key_pub"]),
+            signature=bytes.fromhex(payload["signature"]),
             issued_at=int(payload["issued_at"]),
-            signed_pre_key=base64.b64decode(payload["signed_pre_key"]),
-            signed_pre_key_sig=base64.b64decode(payload["signed_pre_key_sig"]),
-            mlkem_pub=base64.b64decode(payload["mlkem_pub"]),
+            pqxdh_mode=payload.get("pqxdh_mode", "real"),
         )
-    except KeyError as e:
-        typer.echo(f"ERROR: bundle missing field {e}", err=True)
+    except (KeyError, ValueError) as e:
+        typer.echo(f"ERROR: bundle invalid: {e}", err=True)
         raise typer.Exit(code=1)
     mgr = _build_manager(memory)
     mgr.cache_peer_prekey(bundle)
