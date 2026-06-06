@@ -126,24 +126,20 @@ def send(
     """Encrypts ``message`` and publishes to the chat topic for the peer."""
     mgr = _build_manager(memory)
 
-    # Telegram-style: accept @username (or bare username) and resolve to did
+    # Telegram-style: accept @username (or bare username) and resolve to did via EAS.
     if not peer_did.startswith("did:"):
+        handle = peer_did.lstrip("@")
+        net = os.environ.get("SISOUL_USERNAME_NETWORK", "optimism-mainnet")
         try:
-            from sisoul.prekey_directory import resolve_username
-            handle = peer_did.lstrip("@")
-            resolved = resolve_username(handle)
-            if resolved is None:
-                typer.echo(
-                    f"ERROR: username @{handle!r} not registered in directory",
-                    err=True,
-                )
-                raise typer.Exit(code=1)
-            peer_did = resolved
-        except typer.Exit:
-            raise
-        except Exception as e:
-            typer.echo(f"ERROR: username resolve failed: {e}", err=True)
+            from sisoul.onchain.username_eas import resolve_username as eas_resolve
+            resolved = eas_resolve(handle, network=net)
+        except Exception as e:  # noqa: BLE001
+            typer.echo(f"ERROR: username resolve failed (EAS {net}): {e}", err=True)
             raise typer.Exit(code=2)
+        if resolved is None:
+            typer.echo(f"ERROR: @{handle} not registered on EAS ({net})", err=True)
+            raise typer.Exit(code=1)
+        peer_did = resolved
 
     async def _run() -> None:
         await mgr.send(peer_did, message)
