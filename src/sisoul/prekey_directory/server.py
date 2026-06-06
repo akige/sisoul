@@ -52,7 +52,7 @@ except Exception:
 
 DEFAULT_DIRECTORY_URL = os.environ.get(
     "SISOUL_PREKEY_DIRECTORY",
-    "http://198.51.100.1:8767",  # maintainer-hosted public alpha instance
+    "",  # no public default — see client.py docstring for rationale
 )
 _DEFAULT_DATA_DIR = os.environ.get("SISOUL_PREKEY_DATA", "/var/lib/sisoul-prekey")
 _MAX_BUNDLE_BYTES = 50_000

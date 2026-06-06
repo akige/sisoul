@@ -20,9 +20,22 @@ class PrekeyDirectoryError(Exception):
 
 
 def _resolve_url() -> str:
+    """Resolve the prekey-directory URL the client should hit.
+
+    HISTORY: pre-2026-06-06-evening this defaulted to
+    http://198.51.100.1:8767 (maintainer-hosted aws-us instance) and
+    http://198.51.100.2:8768 (maintainer-hosted aws-hk mirror). Both have been
+    DECOMMISSIONED 2026-06-06 (per project decision to ship v1.0 stable as
+    fully decentralised: kubo+GossipSub for transport, EAS attestation on
+    Optimism mainnet for username → did mapping).
+
+    There is intentionally no public default. Set SISOUL_PREKEY_DIRECTORY
+    to point at your own self-hosted instance, or omit it entirely once
+    the v1.0-stable kubo+EAS code path lands.
+    """
     return os.environ.get(
         "SISOUL_PREKEY_DIRECTORY",
-        "http://198.51.100.1:8767",  # maintainer-hosted public alpha instance
+        "",  # no default: tells callers "directory layer is opt-in"
     ).rstrip("/")
 
 
