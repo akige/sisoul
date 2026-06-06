@@ -53,6 +53,20 @@ def _print_borrow_session(s: Any) -> None:  # type: ignore[no-untyped-def]
     typer.echo(f"  borrower    : {s.borrower_did}")
     typer.echo(f"  lender      : {s.lender_did}")
     typer.echo(f"  resource    : {s.resource_type} amount={s.amount} model={s.model}")
+    inc_mode = getattr(s, "incentive_mode", "gift")
+    typer.echo(f"  incentive   : {inc_mode}")
+    if inc_mode == "kudos":
+        typer.echo(f"    kudos cost   : {getattr(s, 'kudos_cost', 0):.2f}")
+        if getattr(s, "kudos_balance_after", None) is not None:
+            typer.echo(f"    new balance  : {s.kudos_balance_after:.2f}")
+    elif inc_mode == "micropay":
+        receipt = getattr(s, "incentive_receipt", {}) or {}
+        typer.echo(f"    USDT cost    : {receipt.get('usdt_amount', 0):.4f}  ({receipt.get('network', 'TRC20')})")
+        typer.echo(f"    payout addr  : {receipt.get('payout_address', '')}")
+        if receipt.get("tronscan"):
+            typer.echo(f"    verify on    : {receipt['tronscan']}")
+        if receipt.get("instruction"):
+            typer.echo(f"    instruction  : {receipt['instruction']}")
     if s.lend_request_id:
         typer.echo(f"  lend req    : {s.lend_request_id}")
     if s.proxy_method:
@@ -64,6 +78,8 @@ def _print_borrow_session(s: Any) -> None:  # type: ignore[no-untyped-def]
         typer.echo(f"  tokens used : {s.tokens_used}")
     if s.ledger_entry_id:
         typer.echo(f"  ledger entry: {s.ledger_entry_id}")
+    if getattr(s, "note", None):
+        typer.echo(f"  note        : {s.note}")
     if s.error:
         typer.echo(f"  error       : {s.error}")
 
@@ -83,6 +99,8 @@ def cmd_run(
     timeout: float = typer.Option(30.0, "--timeout"),
     no_onchain: bool = typer.Option(False, "--no-onchain"),
     json_out: bool = typer.Option(False, "--json"),
+    dry_run: bool = typer.Option(False, "--dry-run",
+        help="show incentive quote (kudos cost / USDT amount + payout address) without sending the request"),
 ) -> None:
     """完整 borrow 流程 (一次性, 走 lend store + proxy + ledger)."""
     sess = borrow_resource(
@@ -97,6 +115,7 @@ def cmd_run(
         force_mode=force_mode,  # type: ignore[arg-type]
         emergency_flag=emergency,
         per_request_timeout_sec=timeout,
+        dry_run=dry_run,
         enqueue_onchain=not no_onchain,
     )
     if json_out:

@@ -136,6 +136,13 @@ class BorrowSession:
     started_at: int = 0
     completed_at: Optional[int] = None
     note: Optional[str] = None
+    # incentive layer (2026-06-06)
+    incentive_mode: str = "gift"  # gift | kudos | micropay
+    kudos_cost: float = 0.0  # only set when incentive_mode == "kudos"
+    kudos_balance_after: Optional[float] = None
+    usdt_cost: float = 0.0  # only set when incentive_mode == "micropay"
+    usdt_payout_address: str = ""  # only set when incentive_mode == "micropay"
+    incentive_receipt: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.session_id:
@@ -358,6 +365,66 @@ def _wait_for_lender_decision(
 # ── 主入口 ──────────────────────────────────────────────────────────────────
 
 
+def _evaluate_incentive(
+    lender_did: str,
+    amount: int,
+    perms_dir: Optional[Path],
+) -> tuple[str, float, float, str, dict]:
+    """Look up the lender's perm, return the incentive shape.
+
+    Returns (mode, kudos_cost, usdt_cost, usdt_address, details).
+    mode is one of "gift" / "kudos" / "micropay".
+
+    If perm load fails (file missing, etc), defaults to "gift" with 0 cost —
+    callers can still see the BorrowSession.note explaining this.
+    """
+    try:
+        from sisoul.friend.permissions import load_permissions, PermissionNotFoundError
+        from sisoul.friend.kudos import compute_kudos_required, compute_usdt_required
+    except Exception:
+        return ("gift", 0.0, 0.0, "", {"reason": "permissions/kudos imports unavailable"})
+    try:
+        perm = load_permissions(lender_did, perms_dir=perms_dir)
+    except Exception as e:
+        return ("gift", 0.0, 0.0, "", {"reason": f"perm not found: {type(e).__name__}"})
+    q = perm.llm_quota_share
+    mode = getattr(q, "incentive_mode", "gift")
+    kudos = compute_kudos_required(q, amount)
+    usdt = compute_usdt_required(q, amount)
+    payout = getattr(q, "usdt_payout_address", "") or ""
+    return (mode, kudos, usdt, payout, {})
+
+
+def _enforce_kudos(
+    lender_did: str, kudos_cost: float, dry_run: bool, kudos_store_path: Optional[Path] = None,
+) -> tuple[Optional[float], Optional[str]]:
+    """Try to spend kudos_cost from this user's ledger to lender_did.
+
+    Returns (new_balance, error_msg). In dry_run mode, only checks affordability.
+    """
+    if kudos_cost <= 0:
+        return (None, None)
+    try:
+        from sisoul.friend.kudos import KudosStore, KudosInsufficient
+    except Exception as e:
+        return (None, f"kudos module unavailable: {e}")
+    ks = KudosStore(kudos_store_path)
+    try:
+        current = ks.balance(lender_did)
+        new = current - kudos_cost
+        if new < -1000.0:
+            return (current, (
+                f"kudos insufficient: would push balance to {new:.1f} "
+                f"(floor -1000); earn kudos by lending first"
+            ))
+        if dry_run:
+            return (current, None)
+        new = ks.spend(lender_did, kudos_cost, f"borrow {kudos_cost:.2f} kudos")
+        return (new, None)
+    finally:
+        ks.close()
+
+
 def borrow_resource(
     borrower_did: str,
     lender_did: str,
@@ -374,6 +441,8 @@ def borrow_resource(
     ledger_db: Path | str | None = None,
     enqueue_onchain: bool = True,
     perms_dir: Optional[Path] = None,
+    dry_run: bool = False,
+    kudos_store_path: Optional[Path] = None,
 ) -> BorrowSession:
     """完整 borrow 流程.
 
@@ -393,8 +462,9 @@ def borrow_resource(
         status="starting",
     )
 
-    # 1. permission check
-    if force_mode is None:
+    # 1. permission check (skipped in dry_run so the borrower can see a quote
+    # even if the lender's policy requires per-request approval)
+    if force_mode is None and not dry_run:
         decision, mode, reason = _check_permission(
             borrower_did, lender_did, resource_type, amount, model,
             perms_dir=perms_dir,
@@ -407,7 +477,61 @@ def borrow_resource(
             return session
         # decision allowed / per-request → 继续 (per-request 仍走 LendStore 流程)
     else:
-        session.mode = force_mode
+        session.mode = force_mode or "per-request"
+
+    # 1b. incentive evaluation (kudos / micropay) — added 2026-06-06
+    inc_mode, kudos_cost, usdt_cost, payout_addr, details = _evaluate_incentive(
+        lender_did, amount, perms_dir
+    )
+    session.incentive_mode = inc_mode
+    session.kudos_cost = kudos_cost
+    session.usdt_cost = usdt_cost
+    session.usdt_payout_address = payout_addr
+    if inc_mode == "kudos":
+        new_bal, kerr = _enforce_kudos(lender_did, kudos_cost, dry_run, kudos_store_path)
+        session.kudos_balance_after = new_bal
+        if kerr:
+            session.status = "permission-denied"
+            session.error = f"kudos check failed: {kerr}"
+            session.completed_at = int(time.time())
+            return session
+        session.incentive_receipt = {
+            "mode": "kudos",
+            "kudos_cost": kudos_cost,
+            "balance_after": new_bal,
+            "lender_did": lender_did,
+        }
+        if dry_run:
+            session.status = "completed"  # kudos dry-run is a quote preview
+            session.note = f"dry-run: kudos quote {kudos_cost:.2f} (current balance {new_bal:.2f}; no kudos actually spent)"
+            session.completed_at = int(time.time())
+            return session
+    elif inc_mode == "micropay":
+        session.incentive_receipt = {
+            "mode": "micropay",
+            "usdt_amount": usdt_cost,
+            "payout_address": payout_addr,
+            "network": "TRC20",
+            "tronscan": f"https://tronscan.org/#/address/{payout_addr}",
+            "lender_did": lender_did,
+            "instruction": (
+                f"Pay {usdt_cost:.4f} USDT (TRC20) to {payout_addr} BEFORE the "
+                f"lender approves. Send the tx hash to the lender out-of-band; "
+                f"automated chain-watching is alpha v1.1 (T+1m)."
+            ),
+        }
+        if dry_run:
+            session.status = "permission-denied"  # dry-run shows quote without sending request
+            session.note = "dry-run: micropay quote shown, no LendRequest sent"
+            session.completed_at = int(time.time())
+            return session
+    else:
+        session.incentive_receipt = {"mode": "gift", "kudos_cost": 0, "usdt_cost": 0}
+        if dry_run:
+            session.status = "completed"  # gift dry-run is a no-cost preview
+            session.note = "dry-run: gift mode, no cost"
+            session.completed_at = int(time.time())
+            return session
 
     # 2. 发 LendRequest 给对端 LendStore (同机模拟; 真 P2P 走 dev-B encrypted channel)
     store = LendStore(db_path=lend_db, pending_file=pending_file)
