@@ -140,13 +140,13 @@ Visit [akige.github.io/sisoul/](https://akige.github.io/sisoul/) — works on iO
 
 ## Roadmap
 
-- **alpha v1.0** (current) — 5 core + Signal chat + 100 user validation
-- **beta v1.1** (T+1m) — Android F-Droid + iOS AltStore + group chat + Sepolia DAO
+- **alpha v1.0** (current) — 5 core + Signal chat + 100 user validation. Supported today: **macOS / Linux / WSL2** (Python 3.11+ source install)
+- **beta v1.1** (T+1m) — Android F-Droid + iOS AltStore + **macOS menu-bar native app** + group chat + Sepolia DAO
 - **beta v1.2** (T+2m) — Win11 native + i18n + skill marketplace foundation
-- **v1.0 stable** (T+6m) — Optimism mainnet + Airdrop + 100+ community nodes
+- **v1.0 stable** (T+6m) — Optimism mainnet attestations + Soulbound Honor Badge distribution (per §4.10: non-transferable ERC-721, 0 economic value, no token) + 100+ community nodes
 - **v2.0 智能体网络** (T+12m) — Case retrieval + Personal LoRA + Provenance + Skill marketplace
-- **v3.0 超级智能体** (T+18m) — Multi-Agent Debate + Federated LoRA + SIS micropay
-- **emergent collective intelligence** (T+36m) — 10K+ MAU + 1M+ cases + 70%+ recall (bonus, ~25-35% probability)
+- **v3.0 超级智能体** (T+18m) — Multi-Agent Debate + Federated LoRA + on-chain non-monetary credit ledger (reputation-weighted reciprocity, not a tradable token)
+- **emergent collective intelligence** (T+36m) — 10K+ MAU + 1M+ cases + 70%+ recall (stretch goal, ~25-35% probability)
 
 ## Tests
 

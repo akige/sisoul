@@ -109,10 +109,13 @@ def test_license_apache_2():
 
 
 def test_readme_has_install_command():
-    """README has the curl install one-liner (critical for users)."""
+    """README has a working install path: alpha source install OR post-release curl one-liner."""
     readme = (REPO / "README.md").read_text()
-    assert "curl -sSfL" in readme
-    assert "install.sh" in readme
+    has_curl = "curl -sSfL" in readme and "install.sh" in readme
+    has_source = "git clone" in readme and "pip install -e" in readme
+    assert has_curl or has_source, (
+        "README must show either curl install.sh or git-clone source-install"
+    )
 
 
 def test_changelog_references_current_version():
