@@ -60,6 +60,23 @@ def _resolve_local_did() -> str:
             return first if isinstance(first, str) else first.get("did", "did:key:zUnknown")
     except Exception:
         pass
+    # Fallback: derive did:key from BIP-39 seed in vault (lightweight path)
+    try:
+        from pathlib import Path
+        from sisoul.identity import (
+            load_mnemonic_from_file,
+            mnemonic_to_master_key,
+            generate_did_key_from_master,
+        )
+        vault = Path(os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))).expanduser()
+        seed_path = vault / "seed.txt"
+        if seed_path.exists():
+            mnemonic = load_mnemonic_from_file(seed_path)
+            master = mnemonic_to_master_key(mnemonic)
+            did, _priv, _pub = generate_did_key_from_master(master, index=0)
+            return did
+    except Exception:
+        pass
     return "did:key:zLocalSisoul"
 
 
@@ -113,7 +130,18 @@ def send(
         await mgr.send(peer_did, message)
         mgr.persist()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except RuntimeError as e:
+        if "running event loop" in str(e) or "cannot be called" in str(e):
+            # Already in a loop (e.g. typer + httpx async backend). Use loop policy.
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(_run())
+            finally:
+                loop.close()
+        else:
+            raise
     typer.echo(json.dumps({
         "ok": True,
         "peer_did": peer_did,
