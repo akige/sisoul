@@ -248,4 +248,67 @@ def status() -> None:
     }, ensure_ascii=False))
 
 
+@chat_app.command("export-prekey")
+def cmd_export_prekey(
+    out: Optional[Path] = typer.Option(None, "--out", "-o",
+        help="write bundle JSON to file (default stdout)"),
+    memory: bool = typer.Option(False, "--memory"),
+) -> None:
+    """Export your local PQXDH PreKey bundle as JSON so a friend can import it.
+
+    Alpha v1.0 manual bundle exchange (GossipSub auto-discovery is v1.1).
+    Run this on your machine, send the file to your friend out-of-band,
+    they run `sisoul chat cache-peer <file>` to install it.
+    """
+    import base64
+    mgr = _build_manager(memory)
+    bundle = mgr.rotate_prekey()
+    payload = {
+        "did": mgr.local_did,
+        "issued_at": bundle.issued_at,
+        "signed_pre_key": base64.b64encode(bundle.signed_pre_key).decode(),
+        "signed_pre_key_sig": base64.b64encode(bundle.signed_pre_key_sig).decode(),
+        "mlkem_pub": base64.b64encode(bundle.mlkem_pub).decode(),
+        "version": 1,
+    }
+    if out:
+        out.write_text(json.dumps(payload, indent=2))
+        typer.echo(f"OK PreKey bundle exported to {out}")
+        typer.echo(f"  did: {mgr.local_did}")
+        typer.echo(f"  send {out} to your friend; they run `sisoul chat cache-peer {out}`")
+    else:
+        typer.echo(json.dumps(payload, indent=2))
+
+
+@chat_app.command("cache-peer")
+def cmd_cache_peer(
+    bundle_file: Path = typer.Argument(..., help="path to peer's bundle JSON (from sisoul chat export-prekey)"),
+    memory: bool = typer.Option(False, "--memory"),
+) -> None:
+    """Import a friend's PreKey bundle so you can chat with them."""
+    import base64
+    from sisoul.chat.pqxdh import PreKeyBundle
+    try:
+        payload = json.loads(bundle_file.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        typer.echo(f"ERROR: failed to read {bundle_file}: {e}", err=True)
+        raise typer.Exit(code=1)
+    try:
+        bundle = PreKeyBundle(
+            did=payload["did"],
+            issued_at=int(payload["issued_at"]),
+            signed_pre_key=base64.b64decode(payload["signed_pre_key"]),
+            signed_pre_key_sig=base64.b64decode(payload["signed_pre_key_sig"]),
+            mlkem_pub=base64.b64decode(payload["mlkem_pub"]),
+        )
+    except KeyError as e:
+        typer.echo(f"ERROR: bundle missing field {e}", err=True)
+        raise typer.Exit(code=1)
+    mgr = _build_manager(memory)
+    mgr.cache_peer_prekey(bundle)
+    mgr.persist()
+    typer.echo(f"OK cached PreKey bundle for {bundle.did}")
+    typer.echo(f"  You can now `sisoul chat send {bundle.did} 'hi'`")
+
+
 __all__ = ["chat_app"]
