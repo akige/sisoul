@@ -221,6 +221,17 @@ def run_init(
     typer.echo(f"   dna.json + {len(goals_list)} 个长期目标 + preferences/ + chat-history/")
     if has_seed:
         typer.echo(f"   seed: {paths.root / SEED_FILENAME} (BIP-39 12 词, chmod 600)")
+        # Print the did:key (same derivation chat/username use) so the user sees
+        # their decentralised identity right after init (Gate-1).
+        try:
+            from sisoul.identity import generate_did_key_from_master
+            from sisoul.identity.seed import load_mnemonic_from_file
+
+            _mnem = load_mnemonic_from_file(paths.root / SEED_FILENAME)
+            _did, _, _ = generate_did_key_from_master(mnemonic_to_master_key(_mnem), index=0)
+            typer.echo(f"   did:key: {_did}")
+        except Exception:  # noqa: BLE001  (never block init on the display line)
+            pass
     else:
         typer.echo("   ⚠️  无 seed (--skip-seed), 仅 dev/test 用")
     typer.echo("")
