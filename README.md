@@ -191,6 +191,15 @@ pytest tests
 
 ---
 
+## Support sisoul
+
+Per §4.10 (never-token), sisoul never issues a token. If you want to back
+maintainer time + bootstrap nodes + audits, donate directly:
+
+- **USDT (TRC20)**: `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn`
+  · [tronscan](https://tronscan.org/#/address/TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn)
+- See [GOVERNANCE.md §Funding](docs/GOVERNANCE.md#funding-per-410) for the full sustainability model.
+
 🤖 sisoul is developed with [Claude Code](https://claude.com/claude-code).
 
 License: Apache-2.0

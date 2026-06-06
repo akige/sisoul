@@ -16,6 +16,15 @@
 
 Email `security@sisoul.io` (will be set up post-launch; until then use any maintainer's GitHub-listed email + tag subject `[sisoul security]`).
 
+## Sponsorship / Donations
+
+If you want to support sisoul development (per §4.10 never-token, the only sustainable path is grants + sponsorship + donations):
+
+- **USDT (TRC20)**: `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn` · [verify on tronscan](https://tronscan.org/#/address/TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn)
+- Maintainer-controlled, transparent on-chain.
+- Quarterly Foundation report starts T+3m (post-Stiftung incorporation).
+- See [GOVERNANCE.md §Funding](docs/GOVERNANCE.md#funding-per-410) for the full sustainability model.
+
 ### What to include
 
 - sisoul version (`sisoul --version`)

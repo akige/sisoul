@@ -133,8 +133,16 @@ hard constraint.
 | Optimism RetroPGF | Will apply at v1.0 stable (T+6m) | sisoul receives OP tokens (not SIS) which fund maintainer time |
 | Gitcoin Grants | Will apply at beta (T+3m) | Quadratic funding round, small donations matched |
 | Ethereum Foundation | Eligible for Privacy + Communication tracks | Apply at v2.0 (MLS ship) |
-| Direct sponsorship | Currently open | Contact: see SECURITY.md |
-| Individual donations | Currently open | Crypto + traditional accepted, transparent address |
+| Direct sponsorship | Currently open | Contact: see SECURITY.md · USDT (TRC20) `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn` |
+| Individual donations | Currently open | USDT (TRC20): `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn` · transparent on-chain · more channels coming |
+
+### Donation address (transparent, on-chain verifiable)
+
+- **USDT (TRC20)**: `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn`
+  - Network: TRON (TRC-20)
+  - Verify on chain: https://tronscan.org/#/address/TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn
+  - Maintainer-controlled. All inflows accounted for in the alpha quarterly
+    Foundation report (starts T+3m, post-Stiftung incorporation).
 
 **If grants + sponsorship + donations cannot sustain sisoul, the protocol does
 not "need" a token to survive — it needs to build more value.**
