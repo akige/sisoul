@@ -148,6 +148,24 @@ Visit [akige.github.io/sisoul/](https://akige.github.io/sisoul/) — works on iO
 - **v3.0 超级智能体** (T+18m) — Multi-Agent Debate + Federated LoRA + on-chain non-monetary credit ledger (reputation-weighted reciprocity, not a tradable token)
 - **emergent collective intelligence** (T+36m) — 10K+ MAU + 1M+ cases + 70%+ recall (stretch goal, ~25-35% probability)
 
+## Documentation
+
+Start here if you're picking up sisoul fresh (whether as a tester or as a new dev session).
+
+| Doc | What it answers |
+|---|---|
+| [docs/INSTALL.md](docs/INSTALL.md) | 4-step source install, wrapper setup, troubleshooting `sisoul: command not found` |
+| [docs/ALPHA-LAUNCH-STATUS-2026-06-06.md](docs/ALPHA-LAUNCH-STATUS-2026-06-06.md) | Q1-Q8 reality audit. What's ✅ implemented vs ⚠️ partial vs ❌ designed-only. Read **first**. |
+| [docs/INCENTIVE-DESIGN.md](docs/INCENTIVE-DESIGN.md) | gift / kudos / micropay model for borrow LLM. How strangers can pay lenders directly without sisoul taking a cut. |
+| [docs/GOVERNANCE.md](docs/GOVERNANCE.md) | Three governance layers (PR / RSI / DAO), §4.10 never-token rationale, full funding model + donation address |
+| [docs/FOUNDER-AGENT.md](docs/FOUNDER-AGENT.md) | What `@founder` is, how to summon it, vault layout |
+| [docs/FOUNDER-SECURITY.md](docs/FOUNDER-SECURITY.md) | Audited boundary — what `@founder` **cannot** do (no shell, no env, no exfil) |
+| [docs/NEXT-SESSION-HANDOFF.md](docs/NEXT-SESSION-HANDOFF.md) | If you are a new agent / dev session inheriting this work, this is your starting point. Reading order + V2EX-readiness gates + concrete next-up tasks. |
+| [docs/V2EX-LAUNCH-POST.md](docs/V2EX-LAUNCH-POST.md) | The draft launch post |
+| [docs/whitepaper/sisoul-v1.0-whitepaper.md](docs/whitepaper/sisoul-v1.0-whitepaper.md) | 14-chapter whitepaper (§4.10 never-token, §4.11 never-shutdown) |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Wire protocol spec for third-party implementations |
+| [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) | Security threat model |
+
 ## Tests
 
 ```bash
