@@ -255,6 +255,59 @@ def create_app() -> FastAPI:
         except Exception as e:  # noqa: BLE001
             print(f"[daemon] proxy auto-init failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Workstream A1: daemon 启动时内嵌 kubo (GossipSub 传输底座) ──────────────
+    # 用户红线 §10.3: 只允许 mac/wsl/win 跑; aws-*/cloud 主机一律拒 (打一行日志后
+    # 继续以 local-only 模式运行, 不起 GossipSub). 单一真相源 = host_policy.
+    @app.on_event("startup")
+    async def _maybe_start_embedded_kubo() -> None:
+        import asyncio as _asyncio
+        import os as _os
+
+        from sisoul.p2p.host_policy import cloud_refusal_reason
+
+        reason = cloud_refusal_reason()
+        if reason is not None:
+            print(
+                f"[daemon] P2P/kubo disabled on this host ({reason}); "
+                f"running local-only, no GossipSub. (policy: mac/wsl/win only)",
+                file=sys.stderr,
+            )
+            return
+        if _os.environ.get("SISOUL_EMBED_KUBO", "1") == "0":
+            print("[daemon] SISOUL_EMBED_KUBO=0 — embedded kubo skipped.", file=sys.stderr)
+            return
+        try:
+            from sisoul.p2p.ipfs_kubo import find_kubo_binary, get_default_node
+
+            env_mode = _os.environ.get("SISOUL_IPFS_MODE", "")
+            if env_mode not in ("external-daemon", "mock") and find_kubo_binary() is None:
+                print(
+                    "[daemon] no kubo binary — P2P disabled. "
+                    "Install: brew install ipfs / apt install kubo (then restart daemon).",
+                    file=sys.stderr,
+                )
+                return
+            node = get_default_node()
+            app.state.kubo_node = node
+
+            async def _boot() -> None:
+                try:
+                    await node.start()
+                    print(
+                        f"[daemon] embedded kubo started "
+                        f"(mode={node.mode}, peer_id={node.peer_id})",
+                        file=sys.stderr,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    print(
+                        f"[daemon] embedded kubo start failed: {type(e).__name__}: {e}",
+                        file=sys.stderr,
+                    )
+
+            _asyncio.create_task(_boot())
+        except Exception as e:  # noqa: BLE001
+            print(f"[daemon] embedded kubo setup failed: {type(e).__name__}: {e}", file=sys.stderr)
+
     return app
 
 

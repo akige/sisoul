@@ -170,6 +170,11 @@ from sisoul.cli_commands.p2p import p2p_app  # noqa: E402
 
 app.add_typer(p2p_app, name="p2p")
 
+# ── net (Workstream A1 · 内嵌 kubo / GossipSub 状态 · Gate-2 验收命令) ─────────
+from sisoul.cli_commands.net import net_app  # noqa: E402
+
+app.add_typer(net_app, name="net")
+
 
 # ── peer (Wave A #16 · §F.4 STUN 池 + relay-mode) ────────────────────────────
 from sisoul.cli_commands.peer import peer_app  # noqa: E402

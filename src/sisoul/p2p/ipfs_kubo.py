@@ -165,6 +165,15 @@ class IPFSRepoCorrupt(IPFSError):
     code = 6005
 
 
+class IPFSCloudRefused(IPFSError):
+    """拒在 cloud / aws-* 主机 spawn 内嵌 kubo (用户红线 §10.3).
+
+    GossipSub/kubo 只允许跑在 mac/wsl/win 用户自己的机器上。
+    """
+
+    code = 6006
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 数据结构
 # ─────────────────────────────────────────────────────────────────────────────
@@ -512,7 +521,18 @@ class IPFSKuboNode:
             await self._refresh_identity()
             return
 
-        # kubo-subprocess
+        # kubo-subprocess — 拒在 cloud / aws-* 主机 spawn (用户红线 §10.3).
+        # 这是 single chokepoint: 任何想 fork `ipfs daemon` 的路径都先过这关。
+        from sisoul.p2p.host_policy import cloud_refusal_reason
+
+        reason = cloud_refusal_reason()
+        if reason is not None:
+            raise IPFSCloudRefused(
+                f"拒在本机 spawn 内嵌 kubo: {reason}. "
+                f"GossipSub/kubo 只允许跑在你自己的 mac/wsl/win 上。"
+                f"如确需覆盖 (不建议): export SISOUL_ALLOW_CLOUD_P2P=1."
+            )
+
         bin_path = self._explicit_bin or find_kubo_binary()
         if bin_path is None:
             if self.auto_install:
@@ -1137,6 +1157,7 @@ __all__ = [
     "IPFSTimeout",
     "IPFSPinFailed",
     "IPFSRepoCorrupt",
+    "IPFSCloudRefused",
     # 数据
     "IPFSStatus",
     "IPFSAddResult",
