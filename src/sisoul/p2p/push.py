@@ -11,7 +11,7 @@
 ``WakuTransport`` ABC + ``InMemoryWakuTransport`` mock impl (pytest 默认走它).
 主会话集成时换真 ``sisoul.p2p.waku_transport.WakuTransport``.
 
-⚠️ **不在 mac/aws-us 测试/部署**. 本模块只 mock + pytest. macOS Notification 默认
+⚠️ **不在 mac/remote-vps 测试/部署**. 本模块只 mock + pytest. macOS Notification 默认
    noop (set env ``SISOUL_NOTIFY_OSASCRIPT=1`` 才真调 osascript, 测试时永远关).
 
 模块结构:

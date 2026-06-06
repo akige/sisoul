@@ -3,7 +3,7 @@
 §J-2 真验收: same-process 双 WakuTransport 真互发 1k 消息 + store-and-forward
 离线-上线 catchup verify + libsodium 加密包装真跑.
 
-不真跑 nwaku subprocess (用户限本 agent 不在 mac/aws-us 真启 daemon),
+不真跑 nwaku subprocess (用户限本 agent 不在 mac/remote-vps 真启 daemon),
 全部走 mock mode, 但发送路径走真 send/recv API.
 """
 

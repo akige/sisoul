@@ -5,7 +5,7 @@
 ## 1. 装机
 
 ```bash
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 ```
 
 验证:
@@ -116,7 +116,7 @@ sisoul case show <case-id>        # 完整详情
 
 ```
 http://127.0.0.1:9876/docs                   # FastAPI Swagger UI
-https://sisoul.github.io/sisoul-pwa/         # PWA dashboard
+https://akige.github.io/sisoul/         # PWA dashboard
 ```
 
 PWA 路由:

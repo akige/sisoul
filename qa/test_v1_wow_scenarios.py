@@ -11,7 +11,7 @@
 
 约束 (本会话强约束 §J-2 + 任务 spec):
 - mock-only: 不真打 LLM API · 不真发 testnet tx · 不真启 launchd / systemd
-- 不动 mac / aws-us / obs vault / ~/.claude
+- 不动 mac / remote-vps / obs vault / ~/.claude
 - 同机模拟 P2P 朋友 (不真起 2 物理机)
 
 跑: pytest qa/test_v1_wow_scenarios.py -v

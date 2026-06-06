@@ -8,7 +8,7 @@
 
 约束:
 - mock-only: 不真打 LLM API · 不真发 testnet tx · 不真启 launchd
-- 不动 mac / aws-us / obs vault / ~/.claude
+- 不动 mac / remote-vps / obs vault / ~/.claude
 - 30 天 "时间压缩" 到 ms 级 (用 duration override 和 in-memory counter, 不真等)
 
 跑: pytest qa/test_v1_persona_30_days.py -v

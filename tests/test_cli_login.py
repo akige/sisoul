@@ -34,8 +34,8 @@ from sisoul.cli_commands.login import (
 )
 
 # typer.Exit — 跨 typer 0.12 / 0.26 (vendored click) reproducible.
-# 早期写法 `TyExit = click.exceptions.Exit` 在 typer 0.26+ aws-us 上 raise
-# `typer._click.exceptions.Exit` 不匹配, Mac/aws-us 跨机不一致 (Round 9 真发现).
+# 早期写法 `TyExit = click.exceptions.Exit` 在 typer 0.26+ remote-vps 上 raise
+# `typer._click.exceptions.Exit` 不匹配, Mac/remote-vps 跨机不一致 (Round 9 真发现).
 import typer as _typer
 TyExit = _typer.Exit
 

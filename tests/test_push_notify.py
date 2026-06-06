@@ -1,6 +1,6 @@
 """tests for sisoul.p2p.push · core notify + WS + macOS notify mock (Wave B' P1-1).
 
-15+ case (实际 ~20). 全 mock + pytest, 不在 mac/aws-us 真测.
+15+ case (实际 ~20). 全 mock + pytest, 不在 mac/remote-vps 真测.
 """
 
 from __future__ import annotations

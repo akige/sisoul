@@ -26,11 +26,11 @@ What you can do in alpha v1.0:
 5. Signal-grade Chat — Double Ratchet + PQXDH (post-quantum hybrid)
 
 Install (one line):
-$ curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+$ curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 
 Then: sisoul init  (5-step wizard)
 
-PWA (no install): https://sisoul.github.io/sisoul-pwa/
+PWA (no install): https://akige.github.io/sisoul/
 
 Architecture: kubo IPFS embedded + libp2p GossipSub + sigstore signing +
 EAS attestation on Optimism L2. 16 modules total. 2013 pytest pass.
@@ -49,7 +49,7 @@ Looking for 100 alpha users + critique. Esp. on:
 - Petname / mDNS UX
 - Skill marketplace design (foundation in v2.0, ~12 months)
 
-GitHub: https://github.com/sisoul/sisoul
+GitHub: https://github.com/akige/sisoul
 
 Happy to answer questions.
 ```
@@ -101,8 +101,8 @@ looking for 100 alpha users:
 - multi-device folks
 - ok with rough edges
 
-GitHub: github.com/sisoul/sisoul
-PWA: sisoul.github.io/sisoul-pwa
+GitHub: github.com/akige/sisoul
+PWA: akige.github.io/sisoul
 docs (14-ch whitepaper): docs/whitepaper
 
 Apache-2.0 / no VC / no token sale (yet)
@@ -155,7 +155,7 @@ Documentation: 14-chapter whitepaper in repo
 
 Looking for self-hosters + sysadmin types to dogfood.
 
-Repo: github.com/sisoul/sisoul
+Repo: github.com/akige/sisoul
 ```
 
 ## 4. Farcaster (web3 friendly)
@@ -172,7 +172,7 @@ decentralized P2P AI agent protocol.
 Optimism EAS attestation. SIS token T+6m airdrop.
 no servers we operate.
 
-github.com/sisoul/sisoul
+github.com/akige/sisoul
 ```
 
 ## 5. Discord (long-form, e.g. ETHGlobal)
@@ -198,7 +198,7 @@ operated by sisoul team.
 - QR code add-friend (cli + PWA)
 - 5-step init wizard
 - install.sh one-line release (sigstore verified)
-- PWA on sisoul.github.io/sisoul-pwa/
+- PWA on akige.github.io/sisoul/
 
 **Looking for**:
 - alpha users (100 target)
@@ -214,8 +214,8 @@ operated by sisoul team.
 - v3.0 超级智能体: T+18m (debate + federated)
 - 集体智能涌现: T+36m (10K+ MAU bonus, 25-35% probability)
 
-**Repo**: https://github.com/sisoul/sisoul
-**PWA**: https://sisoul.github.io/sisoul-pwa/
+**Repo**: https://github.com/akige/sisoul
+**PWA**: https://akige.github.io/sisoul/
 **Whitepaper**: docs/whitepaper/sisoul-whitepaper-v1.0.md
 
 Built in a 6h sprint (主会话 + 3 opus subagent worktree pairs).
@@ -254,11 +254,11 @@ Happy to AMA.
 
 **装机**:
 ```
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 sisoul init  # 5 步引导
 ```
 
-**PWA (0 装机)**: https://sisoul.github.io/sisoul-pwa/
+**PWA (0 装机)**: https://akige.github.io/sisoul/
 
 **Roadmap** (alpha → 涌现 36 month):
 
@@ -271,7 +271,7 @@ sisoul init  # 5 步引导
 
 招 100 个 alpha 用户, 早期参与可以拿 SIS 空投 (T+6m mainnet 时).
 
-GitHub: github.com/sisoul/sisoul
+GitHub: github.com/akige/sisoul
 ```
 
 ---

@@ -48,10 +48,10 @@ issues #1 + #8; until then `install.sh` falls back to GitHub releases only.
 
 | Public repo | Sources (from `~/sisoul-dev/`) |
 |-------------|--------------------------------|
-| `sisoul/sisoul-cli`      | `src/` + `tests/` + `qa/` + `pyproject.toml` + `VERSION` |
-| `sisoul/sisoul-protocol` | `contracts/` + `sdk/` + `pip/` |
-| `sisoul/sisoul-pip`      | `docs/pip/` + `pip/` |
-| `sisoul/sisoul-docs`     | `docs/whitepaper/` + `docs/*` (内部 README 已剔除) |
+| `<org>/sisoul-cli` (future split)      | `src/` + `tests/` + `qa/` + `pyproject.toml` + `VERSION` |
+| `<org>/sisoul-protocol` (future split) | `contracts/` + `sdk/` + `pip/` |
+| `<org>/sisoul-pip` (future split)      | `docs/pip/` + `pip/` |
+| `<org>/sisoul-docs` (future split)     | `docs/whitepaper/` + `docs/*` (内部 README 已剔除) |
 
 ## Workflow
 

@@ -19,24 +19,24 @@ Manual (avoid scripted `gh repo create` initial — sets visibility wrong):
 
 - [ ] Open https://github.com/new
 - [ ] name=`sisoul`, owner=`sisoul` (or personal), visibility=`public`, init empty
-- [ ] `git remote add origin git@github.com:sisoul/sisoul.git` (or HTTPS+PAT)
+- [ ] `git remote add origin git@github.com:akige/sisoul.git` (or HTTPS+PAT)
 - [ ] `git push -u origin main`
 - [ ] `git push origin v1.0.0-alpha` — triggers `.github/workflows/release.yml`
-- [ ] Visit https://github.com/sisoul/sisoul/actions — watch release workflow
-- [ ] Visit https://github.com/sisoul/sisoul/releases — verify v1.0.0-alpha appears with assets
+- [ ] Visit https://github.com/akige/sisoul/actions — watch release workflow
+- [ ] Visit https://github.com/akige/sisoul/releases — verify v1.0.0-alpha appears with assets
 
 ## PWA gh-pages deploy (T-0:10)
 
 - [ ] GitHub repo Settings → Pages → Source = `GitHub Actions`
 - [ ] `git push` triggers `pwa/.github/workflows/deploy-gh-pages.yml` automatically
-- [ ] Visit https://sisoul.github.io/sisoul-pwa/ — should load index.html
+- [ ] Visit https://akige.github.io/sisoul/ — should load index.html
 - [ ] Open browser console — no 404s on lazy chunks
 
 ## Verify install path (T-0:05)
 
 On a clean machine (or `--dry-run`):
 
-- [ ] `curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash` (skip if you trust ops/install.sh shellcheck PASS)
+- [ ] `curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash` (skip if you trust ops/install.sh shellcheck PASS)
 - [ ] OR install from source: `pip install -e ~/sisoul-dev` then `sisoul --version`
 - [ ] `sisoul init` — wizard 5 steps complete without error
 - [ ] `sisoul daemon start --background` — daemon up on :9876

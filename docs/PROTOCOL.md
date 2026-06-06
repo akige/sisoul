@@ -304,7 +304,7 @@ A conforming implementation should:
 
 ## 11. Reference implementation
 
-`github.com/sisoul/sisoul` (Python, this repo). License: Apache-2.0.
+`github.com/akige/sisoul` (Python, this repo). License: Apache-2.0.
 
 Use as compliance reference + interoperability test target.
 

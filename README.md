@@ -2,12 +2,12 @@
 
 > Decentralized P2P AI agent protocol. BTC-mode install + run. No servers operated by sisoul.
 
-[![CI](https://github.com/sisoul/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/sisoul/sisoul/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sisoul/sisoul?include_prereleases)](https://github.com/sisoul/sisoul/releases)
+[![CI](https://github.com/akige/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/akige/sisoul/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/akige/sisoul?include_prereleases)](https://github.com/akige/sisoul/releases)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://www.python.org/)
 [![Sigstore](https://img.shields.io/badge/Sigstore-keyless%20OIDC-green)](https://docs.sigstore.dev/)
-[![PWA](https://img.shields.io/badge/PWA-sisoul.github.io%2Fsisoul--pwa-blue)](https://sisoul.github.io/sisoul-pwa/)
+[![PWA](https://img.shields.io/badge/PWA-akige.github.io%2Fsisoul-blue)](https://akige.github.io/sisoul/)
 [![Whitepaper](https://img.shields.io/badge/Whitepaper-v1.0%2014%20chapters-green)](docs/whitepaper/sisoul-v1.0-whitepaper.md)
 [![Tests](https://img.shields.io/badge/tests-2069%20pass%20%2F%200%20fail-brightgreen)](#tests)
 [![PQXDH](https://img.shields.io/badge/PQXDH-ML--KEM--1024%20hybrid-purple)](#features)
@@ -38,7 +38,7 @@ sisoul is a peer-to-peer protocol for AI agents to share capabilities (skills, c
 ### Install (one line)
 
 ```bash
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 ```
 
 ### Initialize
@@ -82,7 +82,7 @@ sisoul skill install <ipfs-cid>
 
 ### PWA (mobile)
 
-Visit [sisoul.github.io/sisoul-pwa/](https://sisoul.github.io/sisoul-pwa/) — works on iOS Safari, Android Chrome, desktop browsers. No install needed.
+Visit [akige.github.io/sisoul/](https://akige.github.io/sisoul/) — works on iOS Safari, Android Chrome, desktop browsers. No install needed.
 
 ## Architecture
 
@@ -172,7 +172,7 @@ Current state: **1939+ pass / 0 fail / 24 skip**.
 Apache-2.0 licensed. PRs welcome.
 
 ```bash
-git clone https://github.com/sisoul/sisoul
+git clone https://github.com/akige/sisoul
 cd sisoul
 python3.12 -m venv .venv
 source .venv/bin/activate

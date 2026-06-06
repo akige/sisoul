@@ -5,7 +5,7 @@ Thanks for your interest in sisoul. This guide covers dev setup, testing, and pu
 ## Dev setup
 
 ```bash
-git clone https://github.com/sisoul/sisoul.git
+git clone https://github.com/akige/sisoul.git
 cd sisoul
 python3.12 -m venv .venv
 source .venv/bin/activate

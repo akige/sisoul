@@ -7,7 +7,7 @@
 --------
 - ❌ 不真打 LLM / Anthropic / OpenAI / 任何外部 API
 - ❌ 不真连网络 (TestClient in-memory only)
-- ❌ 不动 mac/aws-us agent / launchd / hooks
+- ❌ 不动 mac/remote-vps agent / launchd / hooks
 - ✅ monkeypatch 所有外部 IO (P2P/EAS/Arweave/LLM forwarder)
 - ✅ tmp_path 隔离文件 IO
 """

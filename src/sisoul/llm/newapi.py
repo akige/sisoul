@@ -12,7 +12,7 @@ Configuration via env:
 
 Why this adapter exists:
     The founder-agent (`@founder`) and three-machine demo agents (mac /
-    aws-us / wsl) run continuously and serve alpha testers. Using a per-call
+    remote-vps / wsl) run continuously and serve alpha testers. Using a per-call
     Anthropic key would be expensive and ties the persona to a single provider.
     The newapi free-pool routes each call through priority-failover:
         copilot-A (Pro+ 1500/mo)

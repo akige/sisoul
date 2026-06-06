@@ -80,7 +80,7 @@ Initial public alpha release.
 - `ops/init/{sisoul-daemon.service,com.sisoul.daemon.plist,install-autostart.sh,README.md}` — autostart template
 - `.github/workflows/ci.yml` — pytest matrix (Python 3.11/3.12) + PWA build + shellcheck
 - `.github/workflows/release.yml` — auto build wheel + sdist + sigstore keyless OIDC sign + GitHub Releases publish
-- `pwa/.github/workflows/deploy-gh-pages.yml` — auto deploy PWA to sisoul.github.io/sisoul-pwa/
+- `pwa/.github/workflows/deploy-gh-pages.yml` — auto deploy PWA to akige.github.io/sisoul/
 
 ### Tests
 - 2069 pytest pass / 0 fail / 24 skip

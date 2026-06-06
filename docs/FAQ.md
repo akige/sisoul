@@ -31,7 +31,7 @@ For chat/borrow LLM: yes (P2P direct, E2E encrypted, kubo IPFS public network).
 For provenance: requires Optimism L2 (geo-restricted by RPC providers, fallback to self-hosted node).
 For install.sh: GitHub Releases primary, IPFS gateway + Codeberg fallback (alpha).
 
-A user behind GFW can run sisoul (verified WSL2 + tx-jp cross-NAT in Wave F).
+A user behind GFW can run sisoul (verified WSL2 + asia-vps cross-NAT in Wave F).
 
 ## Do I need to know crypto / Web3?
 
@@ -154,7 +154,7 @@ DM on Twitter @sisoul_io (post-launch) or Discord (post-launch).
 
 ## I have a different question
 
-Open a GitHub Discussion at https://github.com/sisoul/sisoul/discussions, or read:
+Open a GitHub Discussion at https://github.com/akige/sisoul/discussions, or read:
 
 - `docs/QUICK-START.md` (5-min first run)
 - `docs/ALPHA-LAUNCH-PLAYBOOK.md` (10 sections)

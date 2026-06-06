@@ -2,7 +2,7 @@
 
 > Decentralized P2P AI agent protocol. Your AI agent, your data, your friends, no cloud.
 
-[![CI](https://github.com/sisoul/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/sisoul/sisoul/actions/workflows/ci.yml)
+[![CI](https://github.com/akige/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/akige/sisoul/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Tests](https://img.shields.io/badge/tests-2075%20pass-brightgreen)](#)
 
@@ -15,7 +15,7 @@ Think **BitTorrent + Signal + Wikipedia**, applied to AI agents.
 ## Install
 
 ```bash
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 sisoul init
 ```
 
@@ -63,14 +63,14 @@ sisoul init
 
 ## Get involved
 
-- [GitHub Issues](https://github.com/sisoul/sisoul/issues) — bug reports + features
-- [Discussions](https://github.com/sisoul/sisoul/discussions) — questions, ideas
-- [Contributing Guide](https://github.com/sisoul/sisoul/blob/main/CONTRIBUTING.md) — dev setup
-- [Security](https://github.com/sisoul/sisoul/blob/main/SECURITY.md) — disclosure policy
+- [GitHub Issues](https://github.com/akige/sisoul/issues) — bug reports + features
+- [Discussions](https://github.com/akige/sisoul/discussions) — questions, ideas
+- [Contributing Guide](https://github.com/akige/sisoul/blob/main/CONTRIBUTING.md) — dev setup
+- [Security](https://github.com/akige/sisoul/blob/main/SECURITY.md) — disclosure policy
 
 ## License
 
-[Apache-2.0](https://github.com/sisoul/sisoul/blob/main/LICENSE)
+[Apache-2.0](https://github.com/akige/sisoul/blob/main/LICENSE)
 
 ---
 

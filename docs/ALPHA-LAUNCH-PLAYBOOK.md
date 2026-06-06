@@ -12,7 +12,7 @@
 ## 2. 装机一行命令
 
 ```bash
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 sisoul init  # 5 步 wizard 引导
 sisoul daemon start --background
 ```

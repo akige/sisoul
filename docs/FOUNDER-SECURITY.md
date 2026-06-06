@@ -14,7 +14,7 @@ The founder-agent **cannot**, no matter what an alpha tester types, do any of th
 | Write files outside `vault/founder/chat/log.jsonl` | Only `_record_turn` writes, and it only writes to `chat_log_dir` (config-bound). |
 | Read environment variables (e.g. `SISOUL_NEWAPI_API_KEY`) | LLM only sees `{system_prompt, recalled cases, user question}` — `os.environ` is never serialized into messages. |
 | Make outbound network calls beyond the configured LLM provider | NewapiAdapter targets `SISOUL_NEWAPI_BASE_URL` only. No tool-calling exposed. |
-| Modify the maintainer's mac / aws-us / wsl system | Daemon process runs as user, has no `sudo`, no system file access. |
+| Modify the maintainer's mac / remote-vps / wsl system | Daemon process runs as user, has no `sudo`, no system file access. |
 | Modify the alpha tester's machine | The alpha tester's sisoul daemon receives only a chat reply (text). |
 
 ## Can do (designed)

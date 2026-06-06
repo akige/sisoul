@@ -9,7 +9,7 @@
 
 ```
 +----------------------------------+
-| sisoul daemon (mac/aws-us/wsl)   |
+| sisoul daemon (mac/remote-vps/wsl)   |
 |                                  |
 |  vault/founder/                  |
 |   ├─ system_prompt.md            |  ← persona
@@ -87,21 +87,21 @@ sisoul founder chat "explain MLS group chat in 3 sentences"
 
 Other alpha testers add `did:key:z6Mk<founder>...` as a friend. After
 handshake, sending a chat to that DID reaches one of the three deployed
-`@founder` instances (mac / aws-us / wsl, GossipSub-routed).
+`@founder` instances (mac / remote-vps / wsl, GossipSub-routed).
 
 ## Three-machine deployment
 
 | Host | Role | Network |
 |---|---|---|
 | mac (maintainer laptop) | Primary, writeable vault | Bootstrap node + relay |
-| aws-us | Hot replica, GossipSub mirror | Public IP, alpha-tester first hop |
+| remote-vps | Hot replica, GossipSub mirror | Public IP, alpha-tester first hop |
 | wsl (maintainer Win11) | Cold replica, GossipSub mirror | Tailnet only |
 
 Vault sync via sisoul's existing GossipSub topic
 `/sisoul/founder/v1/<did_hash>`. Writes happen on mac (single writer). Reads
 and chats can be served by any of the three.
 
-If mac is offline, alpha testers reach aws-us. If both offline, wsl. If all
+If mac is offline, alpha testers reach remote-vps. If both offline, wsl. If all
 three offline, `@founder` is unavailable — same as if your friend's laptop is
 asleep. This is consistent with the rest of sisoul: nothing is 100%, but
 nothing has central kill-switch either.
@@ -179,7 +179,7 @@ intentionally not in the vault:
 - Credentials, API keys, secrets — never.
 - Sprint commits that contain or mention private credentials — filtered out
   during the cases dump.
-- Internal-only sprint orchestration prompts (`.aws-us-task-*.md` etc.) —
+- Internal-only sprint orchestration prompts (`.remote-vps-task-*.md` etc.) —
   these are about how `@founder`'s ancestors built it, not about what
   `@founder` should know.
 
@@ -209,7 +209,7 @@ sisoul founder history --last 10
 # Update persona
 sisoul founder edit-prompt   # opens system_prompt.md in $EDITOR
 
-# Sync with other founder instances (mac/aws-us/wsl)
+# Sync with other founder instances (mac/remote-vps/wsl)
 sisoul founder sync
 ```
 

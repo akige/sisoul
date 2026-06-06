@@ -1,7 +1,7 @@
 """sisoul alpha v1.0 launch — 5 真用场景 e2e 测试套 (P2-H).
 
 5 真用场景 (覆盖 §57 alpha 5 核心):
-1. 跨国 borrow LLM (Alice WSL → Bob tx-jp, mock forwarder)
+1. 跨国 borrow LLM (Alice WSL → Bob asia-vps, mock forwarder)
 2. chat send/recv (Alice + Bob 双 daemon, Signal-level if P2-G ship)
 3. skill install (从 IPFS CID 装)
 4. friend add (QR + mDNS 两路径)
@@ -68,7 +68,7 @@ def bob_vault(tmp_path):
 def test_alpha_scenario_1_cross_border_borrow_llm(alpha_vault, bob_vault):
     """Alice 向 Bob borrow LLM, mock forwarder 返回真实结构响应."""
     # 验证 borrow 流程: friend add → borrow request → forwarder → response
-    # 真测在 Wave I I8 已 PASS (cross-border WSL→tx-jp). 这里 sanity 路径.
+    # 真测在 Wave I I8 已 PASS (cross-border WSL→asia-vps). 这里 sanity 路径.
     from sisoul.friend import borrow  # noqa
 
     # mock forwarder 路径 (alpha launch 0 真 LLM 依赖)

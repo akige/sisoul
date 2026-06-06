@@ -86,7 +86,7 @@ cosign verify-blob --certificate <cert> --signature <sig> <asset>
 5. peaceiris/actions-gh-pages@v3 deploy to gh-pages branch
 ```
 
-**Result**: PWA available at `https://sisoul.github.io/sisoul-pwa/`.
+**Result**: PWA available at `https://akige.github.io/sisoul/`.
 
 **First-time setup**: Settings → Pages → Source = "GitHub Actions" (not branch deploy)
 

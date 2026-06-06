@@ -25,7 +25,7 @@ def test_rsi_status(client):
     assert j["version"].startswith("0.1.0")
     assert j["safety_boundary_active"] is True
     assert "components" in j
-    # All 5 RSI modules must report 'loaded' (aws-us session A shipped them).
+    # All 5 RSI modules must report 'loaded' (remote-vps session A shipped them).
     for name in ("godel_agent", "alpha_evolve", "dspy_optimize", "evaluator", "federated_rsi"):
         assert name in j["components"]
         assert j["components"][name] == "loaded"

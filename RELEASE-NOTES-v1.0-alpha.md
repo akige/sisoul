@@ -21,7 +21,7 @@
 ### 装机一行命令
 
 ```bash
-curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
 sisoul init  # 5 步 wizard 引导
 ```
 
@@ -36,7 +36,7 @@ sisoul ask "Hello world"
 
 ### PWA (移动端, 0 装机阻力)
 
-访问 https://sisoul.github.io/sisoul-pwa/ (alpha 临时挂 GitHub Pages, beta 走 IPFS+ENS)
+访问 https://akige.github.io/sisoul/ (alpha 临时挂 GitHub Pages, beta 走 IPFS+ENS)
 
 ## 16/16 模块已 ship (Wave A-M)
 
@@ -47,7 +47,7 @@ sisoul ask "Hello world"
 | D | 真 P2P + nwaku → libp2p → kubo | ✅ |
 | F | kubo IPFS 真去中心化双轨架构 | ✅ |
 | G | LiteLLM forwarder + W6 friend schema kubo_peer_id | ✅ |
-| H | 公网节点 (aws-hk + dmit-us) + sisoul-store + V4 离线 catchup | ✅ |
+| H | 公网节点 (public-relay-A + public-relay-D) + sisoul-store + V4 离线 catchup | ✅ |
 | I | 9 LLM provider adapter 解耦 | ✅ |
 | J | ENS + 跨链 EAS 5 mainnet | ✅ ship |
 | K | DAO + SIS Token + Snapshot + Optimism timelock | ✅ ship (testnet) |
@@ -132,9 +132,9 @@ Apache-2.0
 
 ## Contribute
 
-GitHub: https://github.com/sisoul/sisoul (待开 public, alpha launch 时 unprivate)
+GitHub: https://github.com/akige/sisoul (待开 public, alpha launch 时 unprivate)
 
-PWA: https://sisoul.github.io/sisoul-pwa/
+PWA: https://akige.github.io/sisoul/
 
 Whitepaper: docs/whitepaper/sisoul-whitepaper-v1.0.md (14 章)
 
