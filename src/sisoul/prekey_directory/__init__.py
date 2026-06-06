@@ -37,6 +37,8 @@ from .server import (
 from .client import (
     fetch_peer_prekey,
     publish_my_prekey,
+    push_inbox,
+    list_inbox,
     PrekeyDirectoryError,
 )
 
@@ -47,5 +49,7 @@ __all__ = [
     "DEFAULT_DIRECTORY_URL",
     "fetch_peer_prekey",
     "publish_my_prekey",
+    "push_inbox",
+    "list_inbox",
     "PrekeyDirectoryError",
 ]
