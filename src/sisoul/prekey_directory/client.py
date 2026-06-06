@@ -22,22 +22,65 @@ class PrekeyDirectoryError(Exception):
 def _resolve_url() -> str:
     return os.environ.get(
         "SISOUL_PREKEY_DIRECTORY",
-        "https://akige-prekey.akige.workers.dev",  # placeholder; replaced with real deploy
+        "http://198.51.100.1:8767",  # maintainer-hosted public alpha instance
     ).rstrip("/")
 
 
-def publish_my_prekey(did: str, bundle_dict: dict, *, timeout: float = 10.0,
+def publish_my_prekey(did: str, bundle_dict: dict, *,
+                      username: str = "", bio: str = "",
+                      timeout: float = 10.0,
                       directory_url: Optional[str] = None) -> dict:
-    """PUT /v1/prekey/<did>. Returns {ok, did, uploaded_at}."""
+    """PUT /v1/prekey/<did>. Optionally register username + bio at the same time."""
     if not HAVE_HTTPX:
         raise PrekeyDirectoryError("httpx not installed")
     url = (directory_url or _resolve_url()) + f"/v1/prekey/{did}"
+    payload = {"did": did, "bundle": bundle_dict}
+    if username:
+        payload["username"] = username
+    if bio:
+        payload["bio"] = bio
     try:
         with httpx.Client(timeout=timeout) as c:
-            r = c.put(url, json={"did": did, "bundle": bundle_dict})
+            r = c.put(url, json=payload)
             if r.status_code >= 400:
                 raise PrekeyDirectoryError(f"PUT {url} → {r.status_code}: {r.text[:200]}")
             return r.json()
+    except httpx.HTTPError as e:
+        raise PrekeyDirectoryError(f"HTTP transport: {e}") from e
+
+
+def resolve_username(username: str, *, timeout: float = 10.0,
+                     directory_url: Optional[str] = None) -> Optional[str]:
+    """GET /v1/resolve/<username> → did or None on 404."""
+    if not HAVE_HTTPX:
+        raise PrekeyDirectoryError("httpx not installed")
+    url = (directory_url or _resolve_url()) + f"/v1/resolve/{username}"
+    try:
+        with httpx.Client(timeout=timeout) as c:
+            r = c.get(url)
+            if r.status_code == 404:
+                return None
+            if r.status_code >= 400:
+                raise PrekeyDirectoryError(f"GET {url} → {r.status_code}: {r.text[:200]}")
+            return r.json().get("did")
+    except httpx.HTTPError as e:
+        raise PrekeyDirectoryError(f"HTTP transport: {e}") from e
+
+
+def discover_peers(filter_text: str = "", *, limit: int = 50, max_age_hours: float = 168.0,
+                   timeout: float = 10.0,
+                   directory_url: Optional[str] = None) -> list[dict]:
+    """GET /v1/discover — list active peers (username/bio/last_seen)."""
+    if not HAVE_HTTPX:
+        raise PrekeyDirectoryError("httpx not installed")
+    url = (directory_url or _resolve_url()) + "/v1/discover"
+    try:
+        with httpx.Client(timeout=timeout) as c:
+            r = c.get(url, params={"filter": filter_text, "limit": limit,
+                                    "max_age_hours": max_age_hours})
+            if r.status_code >= 400:
+                raise PrekeyDirectoryError(f"GET {url} → {r.status_code}: {r.text[:200]}")
+            return r.json().get("peers", [])
     except httpx.HTTPError as e:
         raise PrekeyDirectoryError(f"HTTP transport: {e}") from e
 

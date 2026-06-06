@@ -39,6 +39,8 @@ from .client import (
     publish_my_prekey,
     push_inbox,
     list_inbox,
+    resolve_username,
+    discover_peers,
     PrekeyDirectoryError,
 )
 
@@ -51,5 +53,7 @@ __all__ = [
     "publish_my_prekey",
     "push_inbox",
     "list_inbox",
+    "resolve_username",
+    "discover_peers",
     "PrekeyDirectoryError",
 ]

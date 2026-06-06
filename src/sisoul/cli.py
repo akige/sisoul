@@ -136,6 +136,17 @@ app.add_typer(kudos_app, name="kudos")
 app.add_typer(wallet_app, name="wallet")
 
 
+# ── username + discover (Telegram-style, 2026-06-06) ────────────────────────
+from sisoul.cli_commands.username import username_app  # noqa: E402
+from sisoul.cli_commands.discover import discover_app  # noqa: E402
+
+app.add_typer(username_app, name="username")
+# expose `sisoul discover` as a top-level alias of `sisoul friend discover`
+from sisoul.cli_commands.discover import cmd_discover as _cmd_discover  # noqa: E402
+
+app.command("discover")(_cmd_discover)
+
+
 # ── status (W3, dev-A) ───────────────────────────────────────────────────────
 from sisoul.cli_commands.status import cli_status  # noqa: E402
 

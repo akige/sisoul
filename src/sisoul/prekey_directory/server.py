@@ -35,6 +35,8 @@ try:
     class PrekeyPayload(BaseModel):
         did: str
         bundle: dict
+        username: Optional[str] = ""
+        bio: Optional[str] = ""
 
     class EnvelopePayload(BaseModel):
         sender_did: str
@@ -50,7 +52,7 @@ except Exception:
 
 DEFAULT_DIRECTORY_URL = os.environ.get(
     "SISOUL_PREKEY_DIRECTORY",
-    "http://akige-prekey.tail.akigemark.ts.net",  # placeholder; replaced at deploy
+    "http://198.51.100.1:8767",  # maintainer-hosted public alpha instance
 )
 _DEFAULT_DATA_DIR = os.environ.get("SISOUL_PREKEY_DATA", "/var/lib/sisoul-prekey")
 _MAX_BUNDLE_BYTES = 50_000
@@ -62,15 +64,27 @@ _DID_RE = re.compile(r"^did:key:z[A-Za-z0-9]{40,90}$")
 class PrekeyRecord:
     """In-memory representation of a stored bundle."""
 
-    __slots__ = ("did", "bundle", "uploaded_at")
+    __slots__ = ("did", "bundle", "uploaded_at", "username", "bio", "last_seen")
 
-    def __init__(self, did: str, bundle: dict, uploaded_at: float) -> None:
+    def __init__(self, did: str, bundle: dict, uploaded_at: float,
+                 username: str = "", bio: str = "",
+                 last_seen: Optional[float] = None) -> None:
         self.did = did
         self.bundle = bundle
         self.uploaded_at = uploaded_at
+        self.username = username
+        self.bio = bio
+        self.last_seen = last_seen or uploaded_at
 
     def to_dict(self) -> dict:
-        return {"did": self.did, "bundle": self.bundle, "uploaded_at": self.uploaded_at}
+        return {
+            "did": self.did,
+            "bundle": self.bundle,
+            "uploaded_at": self.uploaded_at,
+            "username": self.username,
+            "bio": self.bio,
+            "last_seen": self.last_seen,
+        }
 
 
 class PrekeyStore:
@@ -91,12 +105,46 @@ class PrekeyStore:
     def _inbox_path(self, did: str) -> Path:
         return self.data_dir / "inboxes" / f"{self._safe(did)}.jsonl"
 
-    def put_prekey(self, did: str, bundle: dict) -> PrekeyRecord:
-        rec = PrekeyRecord(did=did, bundle=bundle, uploaded_at=time.time())
+    def put_prekey(self, did: str, bundle: dict,
+                   username: str = "", bio: str = "") -> PrekeyRecord:
+        # If a record already exists, keep its previously registered username
+        # unless the caller explicitly passes a new (non-empty) one. This lets
+        # `sisoul username register foo` persist across `rotate-prekey` calls.
+        prev = self.get_prekey(did)
+        if not username and prev:
+            username = prev.username
+        if not bio and prev:
+            bio = prev.bio
+        now = time.time()
+        rec = PrekeyRecord(did=did, bundle=bundle, uploaded_at=now,
+                           username=username, bio=bio, last_seen=now)
         tmp = self._prekey_path(did).with_suffix(".tmp")
         tmp.write_text(json.dumps(rec.to_dict()))
         tmp.replace(self._prekey_path(did))
+        # Index username → did so /v1/resolve/<username> can find it.
+        if username:
+            self._index_username(username, did)
         return rec
+
+    def _username_index_path(self, username: str) -> Path:
+        idx_dir = self.data_dir / "usernames"
+        idx_dir.mkdir(exist_ok=True)
+        return idx_dir / f"{self._safe(username.lower())}.txt"
+
+    def _index_username(self, username: str, did: str) -> None:
+        # last-writer-wins: if Alice took username "foo" first and Bob tries to
+        # take it later, Bob wins. For alpha that's fine; v1.1 adds proof-of-ownership.
+        self._username_index_path(username).write_text(did)
+
+    def resolve_username(self, username: str) -> Optional[str]:
+        p = self._username_index_path(username)
+        if not p.exists():
+            return None
+        try:
+            did = p.read_text().strip()
+            return did or None
+        except Exception:
+            return None
 
     def get_prekey(self, did: str) -> Optional[PrekeyRecord]:
         p = self._prekey_path(did)
@@ -108,7 +156,44 @@ class PrekeyStore:
             return None
         if time.time() - obj["uploaded_at"] > _TTL_SECONDS:
             return None
-        return PrekeyRecord(did=obj["did"], bundle=obj["bundle"], uploaded_at=obj["uploaded_at"])
+        return PrekeyRecord(
+            did=obj["did"], bundle=obj["bundle"], uploaded_at=obj["uploaded_at"],
+            username=obj.get("username", ""), bio=obj.get("bio", ""),
+            last_seen=obj.get("last_seen"),
+        )
+
+    def list_active_peers(self, *, limit: int = 100, min_age_seconds: float = 0.0,
+                          max_age_seconds: float = 7 * 86400,
+                          filter_text: str = "") -> list[dict]:
+        """Return summary cards of recently-active peers for /v1/discover."""
+        now = time.time()
+        out = []
+        prekey_dir = self.data_dir / "prekeys"
+        if not prekey_dir.exists():
+            return []
+        flt = filter_text.lower().strip()
+        for path in prekey_dir.glob("*.json"):
+            try:
+                obj = json.loads(path.read_text())
+            except Exception:
+                continue
+            last_seen = obj.get("last_seen", obj.get("uploaded_at", 0))
+            age = now - last_seen
+            if age < min_age_seconds or age > max_age_seconds:
+                continue
+            uname = obj.get("username", "")
+            bio = obj.get("bio", "")
+            if flt and flt not in uname.lower() and flt not in bio.lower():
+                continue
+            out.append({
+                "did": obj["did"],
+                "username": uname,
+                "bio": bio,
+                "last_seen": last_seen,
+                "age_seconds": age,
+            })
+        out.sort(key=lambda x: x["age_seconds"])
+        return out[:limit]
 
     def append_inbox(self, did: str, envelope: dict) -> dict:
         p = self._inbox_path(did)
@@ -186,6 +271,8 @@ def create_prekey_directory_app(store: Optional[PrekeyStore] = None):
     def healthz():
         return {"ok": True, "service": "sisoul-prekey-directory", "ts": int(time.time())}
 
+    _USERNAME_RE = re.compile(r"^[a-zA-Z0-9_\-]{2,32}$")
+
     @app.put("/v1/prekey/{did}")
     async def put_prekey(did: str, request: Request, payload: PrekeyPayload = Body(...)):
         _check_did(did)
@@ -197,8 +284,39 @@ def create_prekey_directory_app(store: Optional[PrekeyStore] = None):
         body_size = len(json.dumps(payload.bundle))
         if body_size > _MAX_BUNDLE_BYTES:
             raise HTTPException(413, detail=f"bundle too large ({body_size}B > {_MAX_BUNDLE_BYTES}B)")
-        rec = s.put_prekey(did, payload.bundle)
-        return {"ok": True, "did": did, "uploaded_at": rec.uploaded_at}
+        username = (payload.username or "").strip()
+        if username and not _USERNAME_RE.match(username):
+            raise HTTPException(400, detail=f"username must match [a-zA-Z0-9_-]{{2,32}}: {username!r}")
+        bio = (payload.bio or "").strip()[:200]
+        rec = s.put_prekey(did, payload.bundle, username=username, bio=bio)
+        return {"ok": True, "did": did, "uploaded_at": rec.uploaded_at,
+                "username": rec.username, "bio": rec.bio}
+
+    @app.get("/v1/resolve/{username}")
+    async def resolve_username(username: str, request: Request):
+        client = request.client.host if request.client else "unknown"
+        if not get_limit.check(client):
+            raise HTTPException(429, detail="rate limit (60/min GET)")
+        if not _USERNAME_RE.match(username):
+            raise HTTPException(400, detail=f"invalid username: {username!r}")
+        did = s.resolve_username(username)
+        if did is None:
+            raise HTTPException(404, detail=f"username {username!r} not registered")
+        return {"username": username, "did": did}
+
+    @app.get("/v1/discover")
+    async def discover(filter: str = "", limit: int = 50, max_age_hours: float = 168.0,
+                       request: Request = None):
+        if request:
+            client = request.client.host if request.client else "unknown"
+            if not get_limit.check(client):
+                raise HTTPException(429, detail="rate limit (60/min GET)")
+        peers = s.list_active_peers(
+            filter_text=filter,
+            limit=min(limit, 200),
+            max_age_seconds=max_age_hours * 3600.0,
+        )
+        return {"count": len(peers), "peers": peers}
 
     @app.get("/v1/prekey/{did}")
     async def get_prekey(did: str, request: Request):
