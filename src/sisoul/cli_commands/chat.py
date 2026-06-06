@@ -106,11 +106,97 @@ def _build_transport(use_memory: bool) -> tuple[object, bool]:
 
 def _build_manager(use_memory: bool) -> ChatManager:
     transport, _ = _build_transport(use_memory)
+    local_did = _resolve_local_did()
+    master_key = _resolve_master_key()
+    # Load persisted identity keys so daemon-announce / recv / send all share the
+    # SAME prekey bundle (required for the GossipSub handshake to work across
+    # processes); generate + persist on first use.
+    from sisoul.chat.session import load_local_keys, save_local_keys
+
+    keys = load_local_keys(local_did, master_key)
+    if keys is None:
+        from sisoul.chat.pqxdh import generate_pre_key_bundle
+
+        keys = generate_pre_key_bundle(local_did)
+        save_local_keys(keys, master_key)
     return ChatManager(
-        local_did=_resolve_local_did(),
-        master_key=_resolve_master_key(),
+        local_did=local_did,
+        master_key=master_key,
         transport=transport,  # type: ignore[arg-type]
+        keys=keys,
     )
+
+
+class _NoPrekey(Exception):
+    """No prekey bundle could be discovered for the peer."""
+
+
+def _run_async(coro):
+    """Run a coroutine from the sync CLI, tolerating an already-running loop."""
+    try:
+        return asyncio.run(coro)
+    except RuntimeError as e:
+        if "running event loop" in str(e) or "cannot be called" in str(e):
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(coro)
+            finally:
+                loop.close()
+        raise
+
+
+def _bundle_from_dict(d: dict):
+    """Reconstruct a PreKeyBundle from its to_dict() form (GossipSub or HTTP)."""
+    from sisoul.chat.pqxdh import PreKeyBundle
+
+    return PreKeyBundle(
+        did=d["did"],
+        x25519_pub=bytes.fromhex(d["x25519_pub"]),
+        mlkem_pub=bytes.fromhex(d["mlkem_pub"]),
+        signed_pre_key_pub=bytes.fromhex(d["signed_pre_key_pub"]),
+        signature=bytes.fromhex(d["signature"]),
+        issued_at=int(d["issued_at"]),
+        pqxdh_mode=d.get("pqxdh_mode", "real"),
+    )
+
+
+async def _discover_prekey_gossipsub(mgr, peer_did: str, timeout: float) -> bool:
+    """Subscribe to the peer's prekey GossipSub topic; cache the first match.
+
+    Returns True if a bundle was cached. Requires the peer to be (re)announcing
+    on GossipSub — their ``sisoul daemon`` does this periodically (A2)."""
+    from sisoul.chat.transport import WireEnvelope, prekey_topic_for
+
+    topic = prekey_topic_for(peer_did)
+    try:
+        gen = await mgr.transport.subscribe(topic)
+    except Exception:  # noqa: BLE001
+        return False
+
+    async def _collect() -> bool:
+        async for raw in gen:
+            try:
+                env = WireEnvelope.from_bytes(raw)
+            except Exception:  # noqa: BLE001
+                continue
+            if env.kind != "prekey" or env.body.get("did") != peer_did:
+                continue
+            try:
+                mgr.cache_peer_prekey(_bundle_from_dict(env.body))
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    try:
+        return await asyncio.wait_for(_collect(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        try:
+            await gen.aclose()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -119,9 +205,12 @@ def _build_manager(use_memory: bool) -> ChatManager:
 
 @chat_app.command("send")
 def send(
-    peer_did: str = typer.Argument(..., help="peer DID (did:key:z...)"),
+    peer_did: str = typer.Argument(..., help="peer DID (did:key:z...) or @username"),
     message: str = typer.Argument(..., help="plaintext message"),
     memory: bool = typer.Option(False, "--memory", help="use in-process transport (test mode)"),
+    prekey_wait: float = typer.Option(
+        8.0, "--prekey-wait", help="seconds to wait for the peer's prekey over GossipSub"
+    ),
 ) -> None:
     """Encrypts ``message`` and publishes to the chat topic for the peer."""
     mgr = _build_manager(memory)
@@ -141,63 +230,37 @@ def send(
             raise typer.Exit(code=1)
         peer_did = resolved
 
-    async def _run() -> None:
+    async def _full_send() -> None:
+        # Pre-key discovery is GossipSub-first (decentralised): subscribe to the
+        # peer's prekey topic and catch a (re)announce — their daemon announces
+        # periodically (A2). Fall back to an explicit self-hosted HTTP directory
+        # ONLY if the user set SISOUL_PREKEY_DIRECTORY (there is no public default).
+        if mgr.load_peer_prekey(peer_did) is None:
+            got = await _discover_prekey_gossipsub(mgr, peer_did, prekey_wait)
+            if not got and os.environ.get("SISOUL_PREKEY_DIRECTORY"):
+                try:
+                    from sisoul.prekey_directory import fetch_peer_prekey
+                    bundle_dict = fetch_peer_prekey(peer_did)
+                    if bundle_dict is not None:
+                        mgr.cache_peer_prekey(_bundle_from_dict(bundle_dict))
+                except Exception as fetch_err:  # noqa: BLE001
+                    typer.echo(f"WARN: HTTP directory lookup failed: {fetch_err}", err=True)
+            if mgr.load_peer_prekey(peer_did) is None:
+                raise _NoPrekey()
         await mgr.send(peer_did, message)
         mgr.persist()
 
-    # If we don't have a cached bundle for peer_did, try the HTTP prekey
-    # directory before failing. This is the alpha-v1.0 Telegram-style path.
-    if mgr.load_peer_prekey(peer_did) is None:
-        try:
-            from sisoul.prekey_directory import fetch_peer_prekey, PrekeyDirectoryError
-            from sisoul.chat.pqxdh import PreKeyBundle
-            bundle_dict = fetch_peer_prekey(peer_did)
-            if bundle_dict is not None:
-                bundle = PreKeyBundle(
-                    did=bundle_dict["did"],
-                    x25519_pub=bytes.fromhex(bundle_dict["x25519_pub"]),
-                    mlkem_pub=bytes.fromhex(bundle_dict["mlkem_pub"]),
-                    signed_pre_key_pub=bytes.fromhex(bundle_dict["signed_pre_key_pub"]),
-                    signature=bytes.fromhex(bundle_dict["signature"]),
-                    issued_at=int(bundle_dict["issued_at"]),
-                    pqxdh_mode=bundle_dict.get("pqxdh_mode", "real"),
-                )
-                mgr.cache_peer_prekey(bundle)
-        except Exception as fetch_err:
-            typer.echo(
-                f"WARN: prekey directory lookup failed for {peer_did}: "
-                f"{fetch_err}. Falling back to local cache / GossipSub.",
-                err=True,
-            )
-
     try:
-        asyncio.run(_run())
-    except RuntimeError as e:
-        if "running event loop" in str(e) or "cannot be called" in str(e):
-            # Already in a loop (e.g. typer + httpx async backend). Use loop policy.
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(_run())
-            finally:
-                loop.close()
-        else:
-            raise
-
-    # Convenience: drop a chat-hint envelope into the peer's HTTP inbox so they
-    # see "you have a message" next time they run `sisoul inbox`.
-    try:
-        from sisoul.prekey_directory import push_inbox
-        from sisoul.chat.session import chat_topic_for
-        push_inbox(
-            recipient_did=peer_did,
-            sender_did=mgr.local_did,
-            kind="chat-hint",
-            topic=chat_topic_for(mgr.local_did, peer_did),
-            note="new message",
+        _run_async(_full_send())
+    except _NoPrekey:
+        typer.echo(
+            f"ERROR: no prekey bundle for {peer_did}. Ask them to run `sisoul daemon` "
+            "(announces on GossipSub) then retry, or set SISOUL_PREKEY_DIRECTORY to a "
+            "shared directory you both use.",
+            err=True,
         )
-    except Exception:
-        # best-effort; don't fail the send
-        pass
+        raise typer.Exit(code=1)
+
     typer.echo(json.dumps({
         "ok": True,
         "peer_did": peer_did,
@@ -278,10 +341,24 @@ def cmd_inbox(
     json_output: bool = typer.Option(False, "--json", "-j"),
     memory: bool = typer.Option(False, "--memory"),
 ) -> None:
-    """List inbound chat hints + friend requests (via HTTP prekey directory)."""
+    """List inbound chat hints from an OPTIONAL self-hosted prekey directory.
+
+    Decentralised live messages arrive via `sisoul chat recv` (GossipSub). This
+    inbox is only the optional self-hosted-directory path; set SISOUL_PREKEY_DIRECTORY
+    to use it. Without it, this is a no-op pointing you at `recv`."""
     import time
-    from sisoul.prekey_directory import list_inbox, PrekeyDirectoryError
     mgr = _build_manager(memory)
+    if not os.environ.get("SISOUL_PREKEY_DIRECTORY"):
+        if json_output:
+            typer.echo(json.dumps({
+                "did": mgr.local_did, "entries": [],
+                "hint": "no SISOUL_PREKEY_DIRECTORY set; use `sisoul chat recv` for live P2P messages",
+            }))
+        else:
+            typer.echo("(no SISOUL_PREKEY_DIRECTORY set — inbox is the optional self-hosted path)")
+            typer.echo("For decentralised live messages run:  sisoul chat recv")
+        return
+    from sisoul.prekey_directory import list_inbox, PrekeyDirectoryError
     since = time.time() - since_hours * 3600.0
     try:
         entries = list_inbox(mgr.local_did, since=since, limit=limit)
@@ -315,22 +392,28 @@ def rotate_prekey(
     """Generates a fresh PreKeyBundle and (optionally) announces it on GossipSub."""
     mgr = _build_manager(memory)
     bundle = mgr.rotate_prekey()
+    # Persist the rotated keys so the daemon (announce) + recv use the same bundle.
+    try:
+        from sisoul.chat.session import save_local_keys
+        save_local_keys(mgr.keys, _resolve_master_key())
+    except Exception:  # noqa: BLE001
+        pass
 
     async def _ann() -> str:
         return await mgr.announce_prekey()
 
-    topic = asyncio.run(_ann()) if announce else prekey_topic_for(mgr.local_did)
+    topic = _run_async(_ann()) if announce else prekey_topic_for(mgr.local_did)
 
-    # Telegram-style auto-publish to the HTTP prekey directory so peers can
-    # `sisoul chat send <my-did> 'hi'` without knowing my bundle.
+    # Optional: also publish to a self-hosted HTTP directory if the user set one.
     published_to_directory = False
     directory_error: Optional[str] = None
-    try:
-        from sisoul.prekey_directory import publish_my_prekey
-        publish_my_prekey(mgr.local_did, bundle.to_dict())
-        published_to_directory = True
-    except Exception as e:
-        directory_error = f"{type(e).__name__}: {e}"
+    if os.environ.get("SISOUL_PREKEY_DIRECTORY"):
+        try:
+            from sisoul.prekey_directory import publish_my_prekey
+            publish_my_prekey(mgr.local_did, bundle.to_dict())
+            published_to_directory = True
+        except Exception as e:  # noqa: BLE001
+            directory_error = f"{type(e).__name__}: {e}"
 
     typer.echo(json.dumps({
         "ok": True,

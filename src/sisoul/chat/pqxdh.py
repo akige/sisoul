@@ -166,6 +166,34 @@ class LocalKeyMaterial:
     mlkem_pub: bytes
     bundle: PreKeyBundle
 
+    def to_secret_dict(self) -> dict:
+        """Full serialisation incl. PRIVATE keys — persist locally only, never send."""
+        return {
+            "did": self.did,
+            "ed25519_sign_priv": self.ed25519_sign_priv.hex(),
+            "x25519_identity_priv": self.x25519_identity_priv.hex(),
+            "x25519_identity_pub": self.x25519_identity_pub.hex(),
+            "x25519_spk_priv": self.x25519_spk_priv.hex(),
+            "x25519_spk_pub": self.x25519_spk_pub.hex(),
+            "mlkem_priv": self.mlkem_priv.hex(),
+            "mlkem_pub": self.mlkem_pub.hex(),
+            "bundle": self.bundle.to_dict(),
+        }
+
+    @classmethod
+    def from_secret_dict(cls, d: dict) -> "LocalKeyMaterial":
+        return cls(
+            did=d["did"],
+            ed25519_sign_priv=bytes.fromhex(d["ed25519_sign_priv"]),
+            x25519_identity_priv=bytes.fromhex(d["x25519_identity_priv"]),
+            x25519_identity_pub=bytes.fromhex(d["x25519_identity_pub"]),
+            x25519_spk_priv=bytes.fromhex(d["x25519_spk_priv"]),
+            x25519_spk_pub=bytes.fromhex(d["x25519_spk_pub"]),
+            mlkem_priv=bytes.fromhex(d["mlkem_priv"]),
+            mlkem_pub=bytes.fromhex(d["mlkem_pub"]),
+            bundle=PreKeyBundle.from_dict(d["bundle"]),
+        )
+
 
 class PQXDHError(Exception):
     """PQXDH handshake error."""

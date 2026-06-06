@@ -69,6 +69,42 @@ def _decrypt_at_rest(master_key: bytes, peer_did: str, blob: bytes) -> bytes:
     return SecretBox(key).decrypt(blob)
 
 
+# ---------------------------------------------------------------------------
+# Local key-material persistence (so daemon-announce, recv, and send all share
+# the SAME identity keys across processes — required for GossipSub prekey flow).
+# ---------------------------------------------------------------------------
+
+def _local_keys_path(local_did: str) -> Path:
+    return chat_dir() / "keys" / f"{_safe_did(local_did)}.enc"
+
+
+def save_local_keys(keys: LocalKeyMaterial, master_key: bytes) -> None:
+    """Persist local key material, encrypted at rest with master_key (chmod 600)."""
+    path = _local_keys_path(keys.did)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = _encrypt_at_rest(
+        bytes(master_key[:32]), "__local_keys__", json.dumps(keys.to_secret_dict()).encode()
+    )
+    path.write_bytes(blob)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def load_local_keys(local_did: str, master_key: bytes) -> LocalKeyMaterial | None:
+    """Load persisted key material for ``local_did`` (None if absent / corrupt / mismatch)."""
+    path = _local_keys_path(local_did)
+    if not path.exists():
+        return None
+    try:
+        raw = _decrypt_at_rest(bytes(master_key[:32]), "__local_keys__", path.read_bytes())
+        km = LocalKeyMaterial.from_secret_dict(json.loads(raw.decode()))
+    except Exception:  # noqa: BLE001  (corrupt / wrong key / schema change -> regenerate)
+        return None
+    return km if km.did == local_did else None
+
+
 @dataclass
 class StoredSession:
     """Persisted chat session for a single peer."""

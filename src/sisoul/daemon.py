@@ -308,6 +308,53 @@ def create_app() -> FastAPI:
         except Exception as e:  # noqa: BLE001
             print(f"[daemon] embedded kubo setup failed: {type(e).__name__}: {e}", file=sys.stderr)
 
+    # ── Workstream A2: periodically announce our prekey bundle on GossipSub so
+    # peers can discover it (decentralised, no directory). Allowed hosts + seed
+    # only. A `chat send @me` on the other side subscribes and catches it. ──────
+    @app.on_event("startup")
+    async def _maybe_announce_prekey_loop() -> None:
+        import asyncio as _asyncio
+        import os as _os
+        from pathlib import Path as _Path
+
+        from sisoul.p2p.host_policy import cloud_refusal_reason
+
+        if cloud_refusal_reason() is not None:
+            return  # no P2P on cloud (red line)
+        if _os.environ.get("SISOUL_PREKEY_ANNOUNCE", "1") == "0":
+            return
+        vault = _Path(_os.environ.get("SISOUL_VAULT", str(_Path.home() / ".sisoul"))).expanduser()
+        if not (vault / "seed.txt").exists():
+            print("[daemon] no seed — prekey announce loop skipped.", file=sys.stderr)
+            return
+        interval = float(_os.environ.get("SISOUL_PREKEY_ANNOUNCE_INTERVAL", "15"))
+
+        async def _loop() -> None:
+            await _asyncio.sleep(6)  # let embedded kubo come up first
+            try:
+                from sisoul.cli_commands.chat import _build_manager
+
+                mgr = _build_manager(False)  # KuboGossipSub transport + persisted keys
+            except Exception as e:  # noqa: BLE001
+                print(f"[daemon] prekey announce loop init failed: {e}", file=sys.stderr)
+                return
+            announced_once = False
+            while True:
+                try:
+                    await mgr.announce_prekey()
+                    if not announced_once:
+                        print(
+                            f"[daemon] prekey announce loop active (every {interval:.0f}s, "
+                            f"did={mgr.local_did})",
+                            file=sys.stderr,
+                        )
+                        announced_once = True
+                except Exception:  # noqa: BLE001  (kubo not up yet / transient — retry)
+                    pass
+                await _asyncio.sleep(interval)
+
+        _asyncio.create_task(_loop())
+
     return app
 
 
