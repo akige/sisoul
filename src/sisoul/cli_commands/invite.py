@@ -24,27 +24,76 @@ invite_template_text = """\
   多地址: {multiaddr}
   petname (我建议): {petname}
 
-装机 (一行):
-  curl -sSfL https://github.com/sisoul/sisoul/releases/latest/download/install.sh | bash
+装机 (alpha 期源码装, Python 3.11+):
+  git clone https://github.com/akige/sisoul && cd sisoul
+  python3.12 -m venv .venv && source .venv/bin/activate
+  pip install -e '.[daemon,crypto,chat,llm]'
 
 或试 PWA (0 装机):
-  https://sisoul.github.io/sisoul-pwa/
+  https://akige.github.io/sisoul/
 
 装完跑:
-  sisoul init  (5-step wizard)
+  sisoul init --goals "..."
   sisoul friend add {did}  (加我)
-  sisoul ask "Hello world"
+  sisoul founder chat "为什么 sisoul 不发币?"
 
-想看快速 demo?
-  sisoul daemon start --background && sisoul demo
-
-文档: https://github.com/sisoul/sisoul
+文档: https://github.com/akige/sisoul
 """
 
 
+def _read_my_did_from_vault() -> Optional[str]:
+    """Derive this user's did:key from vault seed.txt (BIP-39).
+
+    Falls back to dna.json / identity.json if seed.txt missing and a did
+    field is cached there.
+    """
+    import json, os
+    vault = Path(os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))).expanduser()
+    seed_path = vault / "seed.txt"
+    if seed_path.exists():
+        try:
+            from sisoul.identity import (
+                load_mnemonic_from_file,
+                mnemonic_to_master_key,
+                generate_did_key_from_master,
+            )
+            mnemonic = load_mnemonic_from_file(seed_path)
+            master = mnemonic_to_master_key(mnemonic)
+            did, _priv, _pub = generate_did_key_from_master(master, index=0)
+            return did
+        except Exception:
+            pass
+    for candidate in (vault / "dna.json", vault / "identity.json", vault / "identity" / "dna.json"):
+        if candidate.exists():
+            try:
+                d = json.loads(candidate.read_text())
+                for k in ("did_key", "did", "didKey", "id"):
+                    if d.get(k):
+                        return d[k]
+            except Exception:
+                continue
+    return None
+
+
+def _read_my_petname_from_vault() -> Optional[str]:
+    """Read this user's petname from vault wizard.json or dna.json."""
+    import json, os
+    vault = Path(os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))).expanduser()
+    for candidate in (vault / "wizard.json", vault / "dna.json"):
+        if candidate.exists():
+            try:
+                d = json.loads(candidate.read_text())
+                for k in ("petname", "name", "handle"):
+                    if d.get(k):
+                        return d[k]
+            except Exception:
+                continue
+    return None
+
+
 def cli_invite(
-    did: str = typer.Option(..., "--did", "-d", help="your did:key"),
-    petname: str = typer.Option(..., "--petname", "-p", help="your local petname"),
+    did: Optional[str] = typer.Option(None, "--did", "-d", help="your did:key (default: read from vault)"),
+    petname: Optional[str] = typer.Option(None, "--petname", "-p", help="your local petname (default: read from vault)"),
     multiaddr: str = typer.Option(
         "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWYourPeerId",
         "--multiaddr", "-m",
@@ -59,7 +108,18 @@ def cli_invite(
     json_output: bool = typer.Option(False, "--json", "-j"),
     short_url: bool = typer.Option(False, "--short-url", help="print sisoul:// deep link"),
 ) -> None:
-    """Generate friend invite (text / QR / sisoul:// link)."""
+    """Generate friend invite (text / QR / sisoul:// link). Reads did/petname from vault by default."""
+    if did is None:
+        did = _read_my_did_from_vault()
+        if did is None:
+            typer.echo(
+                "ERROR: no --did passed and no vault did found. "
+                "Run `sisoul init` first, or pass --did explicitly.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    if petname is None:
+        petname = _read_my_petname_from_vault() or "alice"
     invite_text = invite_template_text.format(did=did, multiaddr=multiaddr, petname=petname)
 
     invite_payload = {

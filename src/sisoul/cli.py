@@ -128,6 +128,14 @@ app.command("self-check")(cli_self_check)
 app.add_typer(case_app, name="case")
 
 
+# ── kudos / wallet (incentive layer, 2026-06-06) ────────────────────────────
+from sisoul.cli_commands.kudos import kudos_app  # noqa: E402
+from sisoul.cli_commands.wallet import wallet_app  # noqa: E402
+
+app.add_typer(kudos_app, name="kudos")
+app.add_typer(wallet_app, name="wallet")
+
+
 # ── status (W3, dev-A) ───────────────────────────────────────────────────────
 from sisoul.cli_commands.status import cli_status  # noqa: E402
 

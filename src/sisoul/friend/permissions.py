@@ -91,7 +91,15 @@ class FriendRevokedError(PermissionError):
 
 @dataclass
 class LLMQuotaShare:
-    """LLM quota share 配置."""
+    """LLM quota share 配置.
+
+    Incentive modes (per INCENTIVE-DESIGN.md, §4.10-compatible — sisoul takes 0%):
+
+    - "gift": no cost to borrower (default, between friends)
+    - "kudos": borrower deducts kudos counter; kudos non-transferable, decays 5%/mo
+    - "micropay": borrower pays USDT-TRC20 directly to lender's payout address;
+      sisoul does not route or hold funds
+    """
 
     enabled: bool = False
     mode: PermissionMode = "per-request"
@@ -99,6 +107,11 @@ class LLMQuotaShare:
     rate_limit: int = 0  # N requests / min (滑动窗口); 0 = 不限
     models: list[str] = field(default_factory=list)  # 空 list = 全允许
     emergency_reserve_tokens: int = 0
+    # incentive (added 2026-06-06 per docs/INCENTIVE-DESIGN.md)
+    incentive_mode: str = "gift"  # gift | kudos | micropay
+    kudos_required_per_1k_tokens: float = 0.0  # only used when incentive_mode == "kudos"
+    usdt_per_1k_tokens: float = 0.0  # only used when incentive_mode == "micropay"
+    usdt_payout_address: str = ""  # TRC20 T-address; required when incentive_mode == "micropay"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -107,6 +120,22 @@ class LLMQuotaShare:
     def from_dict(cls, d: dict[str, Any]) -> LLMQuotaShare:
         valid = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in valid})
+
+    def validate_incentive(self) -> None:
+        """Raise InvalidPermissionConfigError if incentive fields are inconsistent."""
+        if self.incentive_mode not in ("gift", "kudos", "micropay"):
+            raise InvalidPermissionConfigError(
+                f"incentive_mode must be gift/kudos/micropay, got: {self.incentive_mode!r}"
+            )
+        if self.incentive_mode == "kudos" and self.kudos_required_per_1k_tokens < 0:
+            raise InvalidPermissionConfigError("kudos_required_per_1k_tokens must be ≥ 0")
+        if self.incentive_mode == "micropay":
+            if self.usdt_per_1k_tokens <= 0:
+                raise InvalidPermissionConfigError("micropay requires usdt_per_1k_tokens > 0")
+            if not self.usdt_payout_address or not self.usdt_payout_address.startswith("T"):
+                raise InvalidPermissionConfigError(
+                    "micropay requires usdt_payout_address (TRC20 T-address)"
+                )
 
 
 @dataclass
