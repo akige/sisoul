@@ -130,6 +130,31 @@ def send(
         await mgr.send(peer_did, message)
         mgr.persist()
 
+    # If we don't have a cached bundle for peer_did, try the HTTP prekey
+    # directory before failing. This is the alpha-v1.0 Telegram-style path.
+    if mgr.load_peer_prekey(peer_did) is None:
+        try:
+            from sisoul.prekey_directory import fetch_peer_prekey, PrekeyDirectoryError
+            from sisoul.chat.pqxdh import PreKeyBundle
+            bundle_dict = fetch_peer_prekey(peer_did)
+            if bundle_dict is not None:
+                bundle = PreKeyBundle(
+                    did=bundle_dict["did"],
+                    x25519_pub=bytes.fromhex(bundle_dict["x25519_pub"]),
+                    mlkem_pub=bytes.fromhex(bundle_dict["mlkem_pub"]),
+                    signed_pre_key_pub=bytes.fromhex(bundle_dict["signed_pre_key_pub"]),
+                    signature=bytes.fromhex(bundle_dict["signature"]),
+                    issued_at=int(bundle_dict["issued_at"]),
+                    pqxdh_mode=bundle_dict.get("pqxdh_mode", "real"),
+                )
+                mgr.cache_peer_prekey(bundle)
+        except Exception as fetch_err:
+            typer.echo(
+                f"WARN: prekey directory lookup failed for {peer_did}: "
+                f"{fetch_err}. Falling back to local cache / GossipSub.",
+                err=True,
+            )
+
     try:
         asyncio.run(_run())
     except RuntimeError as e:
@@ -142,6 +167,22 @@ def send(
                 loop.close()
         else:
             raise
+
+    # Convenience: drop a chat-hint envelope into the peer's HTTP inbox so they
+    # see "you have a message" next time they run `sisoul inbox`.
+    try:
+        from sisoul.prekey_directory import push_inbox
+        from sisoul.chat.session import chat_topic_for
+        push_inbox(
+            recipient_did=peer_did,
+            sender_did=mgr.local_did,
+            kind="chat-hint",
+            topic=chat_topic_for(mgr.local_did, peer_did),
+            note="new message",
+        )
+    except Exception:
+        # best-effort; don't fail the send
+        pass
     typer.echo(json.dumps({
         "ok": True,
         "peer_did": peer_did,
@@ -214,6 +255,43 @@ def sessions_list(
     }, ensure_ascii=False))
 
 
+@chat_app.command("inbox")
+def cmd_inbox(
+    since_hours: float = typer.Option(168.0, "--since-hours",
+        help="show envelopes newer than this many hours (default: 7 days)"),
+    limit: int = typer.Option(50, "--limit", "-n"),
+    json_output: bool = typer.Option(False, "--json", "-j"),
+    memory: bool = typer.Option(False, "--memory"),
+) -> None:
+    """List inbound chat hints + friend requests (via HTTP prekey directory)."""
+    import time
+    from sisoul.prekey_directory import list_inbox, PrekeyDirectoryError
+    mgr = _build_manager(memory)
+    since = time.time() - since_hours * 3600.0
+    try:
+        entries = list_inbox(mgr.local_did, since=since, limit=limit)
+    except PrekeyDirectoryError as e:
+        typer.echo(f"ERROR: prekey directory unreachable: {e}", err=True)
+        raise typer.Exit(code=2)
+    if json_output:
+        typer.echo(json.dumps({"did": mgr.local_did, "entries": entries}, indent=2))
+        return
+    if not entries:
+        typer.echo(f"(no inbox entries in the last {since_hours:.0f}h)")
+        return
+    typer.echo(f"Inbox for {mgr.local_did} ({len(entries)} entries):")
+    typer.echo(f"{'when':<16}{'kind':<16}{'from':<25}{'note'}")
+    typer.echo("-" * 90)
+    for e in entries:
+        age_h = (time.time() - e.get("received_at", 0)) / 3600
+        sender = e.get("sender_did", "?")
+        sender_short = sender[:22] + "..." if len(sender) > 25 else sender
+        when = f"{age_h:.1f}h ago" if age_h < 24 else f"{age_h/24:.1f}d ago"
+        kind = e.get("kind", "?")
+        note = e.get("note", "")
+        typer.echo(f"{when:<16}{kind:<16}{sender_short:<25}{note}")
+
+
 @chat_app.command("rotate-prekey")
 def rotate_prekey(
     announce: bool = typer.Option(True, "--announce/--no-announce", help="publish new bundle"),
@@ -227,13 +305,27 @@ def rotate_prekey(
         return await mgr.announce_prekey()
 
     topic = asyncio.run(_ann()) if announce else prekey_topic_for(mgr.local_did)
+
+    # Telegram-style auto-publish to the HTTP prekey directory so peers can
+    # `sisoul chat send <my-did> 'hi'` without knowing my bundle.
+    published_to_directory = False
+    directory_error: Optional[str] = None
+    try:
+        from sisoul.prekey_directory import publish_my_prekey
+        publish_my_prekey(mgr.local_did, bundle.to_dict())
+        published_to_directory = True
+    except Exception as e:
+        directory_error = f"{type(e).__name__}: {e}"
+
     typer.echo(json.dumps({
         "ok": True,
         "did": mgr.local_did,
         "issued_at": bundle.issued_at,
         "mlkem_pub_len": len(bundle.mlkem_pub),
         "topic": topic,
-        "announced": announce,
+        "announced_gossipsub": announce,
+        "published_directory": published_to_directory,
+        "directory_error": directory_error,
         "pqxdh_mode": pqxdh_mode(),
     }))
 
