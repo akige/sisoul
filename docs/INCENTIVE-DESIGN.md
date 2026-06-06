@@ -114,7 +114,7 @@ This grade is published on-chain via EAS `REPUTATION_PUBLISH`. It influences
 trust, not access — a lender can still say no to an A-grade stranger, and a
 borrower can still pay an F-grade lender in USDT. Grade is signal, not gate.
 
-## Implementation status (2026-06-06)
+## Implementation status (updated 2026-06-06, evening)
 
 | Component | Status | Notes |
 |---|---|---|
@@ -122,28 +122,45 @@ borrower can still pay an F-grade lender in USDT. Grade is signal, not gate.
 | 3-tier consent (auto / per-request / emergency) | ✅ done | tested in M4 |
 | ReciprocityLedger SQLite | ✅ done | 633 LOC |
 | `compute_reputation` algorithm + EAS publish | ✅ done | Sepolia testnet only |
-| **`incentive_mode: gift`** | ✅ done | this is just the current behaviour |
-| **`incentive_mode: kudos`** | ❌ design only | need: `kudos.db`, `kudos.transfer()`, decay job, PWA UI |
-| **`incentive_mode: micropay`** | ❌ design only | need: USDT-TRC20 watcher (read-only), lender wallet field in permission, signed receipt before borrow, refund-on-failure |
-| Decay job for kudos | ❌ not started | nightly LaunchAgent / systemd timer, 5% / month |
-| PWA: lender sees "Bob borrowed 5k tokens, you earned 5 kudos" | ❌ not started | UI lives in `pwa/src/routes/borrow/` |
-| Stranger micropay end-to-end test | ❌ not started | needs 2 testnet TRX wallets |
+| **`LLMQuotaShare.incentive_mode` field (gift / kudos / micropay)** | ✅ done | 4 new fields + `validate_incentive()` |
+| **`incentive_mode: gift`** | ✅ done | default; tested |
+| **`incentive_mode: kudos`** | ✅ MVP done | `src/sisoul/friend/kudos.py` (240 LOC), `sisoul kudos balance / history / grant / decay` CLI, 5%/mo decay (idempotent), KudosInsufficient floor at -1000. 8 pytests green. |
+| **`incentive_mode: micropay`** | ✅ MVP done | `sisoul wallet show / set-usdt-trc20` (receive addresses only, no custody). `sisoul borrow run --dry-run` shows USDT amount + payout T-address + tronscan link + "pay before approval" instruction. 3 pytests green. |
+| Decay job for kudos | ✅ shipped | LaunchAgent `io.sisoul.kudos-decay` runs daily 03:30. ops/init/sisoul-kudos-decay.plist + load on this machine verified. |
+| Stranger micropay end-to-end test | ⚠️ partial | unit tests + dry-run quote work; **automated TRC20 chain-watcher is still T+1m** — lender currently has to confirm tx hash out-of-band before approving the LendRequest |
+| PWA: lender sees "Bob borrowed 5k tokens, you earned 5 kudos" | ❌ not started | UI lives in `pwa/src/routes/borrow/` — beta v1.1 |
+
+### What ships end-to-end on a fresh clone today
+
+```bash
+sisoul wallet set-usdt-trc20 TYourAddr...           # set your receive address
+sisoul kudos balance                                 # view your kudos ledger
+sisoul kudos grant did:key:bob 50 -r "seed"          # test-seed kudos
+sisoul borrow run did:key:bob llm_quota 5000 \      # quote what it costs
+    --dry-run                                        #   from Bob (gift/kudos/USDT)
+```
+
+The borrow_resource() Python API wires it all together — `dry_run=True` returns
+the cost (kudos / USDT / 0 for gift) without sending a LendRequest; `dry_run=
+False` actually spends kudos (with -1000 floor) or quotes the micropay
+instruction the borrower must execute via their own wallet client.
 
 ## V2EX-readiness checklist
-
-Before posting to V2EX, the following pieces of this doc need to land in
-the codebase:
 
 - [x] Doc itself (this file)
 - [x] Reference from `README.md` and `GOVERNANCE.md`
 - [x] Reference from `docs/V2EX-LAUNCH-POST.md`
-- [ ] `incentive_mode: kudos` MVP (no UI, CLI only)
-- [ ] `incentive_mode: micropay` MVP (manual USDT, no automated watcher)
-- [ ] Updated `sisoul friend add --tier` flag
+- [x] `incentive_mode: kudos` MVP (kudos.py + CLI + 8 tests, 2026-06-06)
+- [x] `incentive_mode: micropay` MVP (wallet.py + borrow integration + 3 tests, 2026-06-06)
+- [x] kudos decay daily job (LaunchAgent shipped + loaded)
+- [ ] Updated `sisoul friend add --tier` flag (future polish — alpha users
+  can manually edit the per-friend yaml)
+- [ ] Automated TRC20 chain-watcher (T+1m)
 
-The honest V2EX position: **today, only `gift` is implemented.** Kudos and
-micropay are the next two PRs. Strangers borrowing from strangers does not
-yet work end-to-end — it's planned, designed, and partially implemented.
+The honest V2EX position: **gift / kudos / micropay all ship MVP today**.
+Strangers borrowing from strangers works end-to-end at the CLI level for
+gift and kudos; for micropay, the borrower must pay USDT manually and send
+the tx hash out-of-band — auto-confirmation comes in alpha v1.1 (T+1m).
 Promise this in the post, don't pretend it already ships.
 
 ## What I deliberately did not propose

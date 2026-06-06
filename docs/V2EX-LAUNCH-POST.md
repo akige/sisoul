@@ -36,9 +36,16 @@ sisoul chat send <did> "hi"                            # Signal Double Ratchet +
 sisoul chat recv                                        # 收消息
 ```
 
+**3 档 incentive 全 MVP 已 ship (2026-06-06 当晚补完)**:
+
+- ✅ **gift 模式** (借出方免费): `sisoul borrow run DID llm_quota 5000` 默认.
+- ✅ **kudos 模式** (非货币计数): `sisoul kudos balance/grant/history/decay` 全 CLI 真跑, `sisoul borrow run --dry-run` 真显借 5000 token 扣几个 kudos. 5%/月衰减 daily LaunchAgent 真挂.
+- ✅ **USDT-TRC20 micropay 模式** (真钱): `sisoul wallet set-usdt-trc20 T...` 设你的收款地址, `sisoul borrow run --dry-run` 真显借出方要收多少 USDT + tronscan 验证 link + "付了 tx hash 给借出方" 人话指示.
+- 25/25 pytests 真过 (18 incentive + 7 v1 integration).
+
 **今天还没实现的 (诚实分级)**:
 
-- ❌ **借 LLM 付 USDT / 扣 kudos** — `docs/INCENTIVE-DESIGN.md` 设计完成, src 还没字段 (`grep kudos src/` 返 0 行). 今天只能走 gift 模式 (借出方免费). 一个月内补 MVP. 不要用 V2EX 发文 + "复制粘贴跑陌生人付费借 LLM" 来骂我们 — 现在 0 code.
+- ⚠️ **USDT 自动到账确认** — 借入方手动付 USDT + 告诉借出方 tx hash, 借出方手动验证后 approve. 自动 chain-watcher 是 alpha v1.1 (T+1m).
 - ❌ **链上 mainnet attestation** — Sepolia testnet 跑通, mainnet 没上.
 - ❌ **macOS 菜单栏 native app / iOS / Android** — Roadmap T+1m~T+2m, 0 代码.
 - ❌ **install.sh 一行装** — release tarball + cosign 没出, 现在走 `git clone + pip install -e` 真路径.
@@ -82,8 +89,8 @@ echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshrc && exec $SHELL
 | 场景 | 模式 | 借出方拿 | 借入方付 | 今天 ship 了? |
 |---|---|---|---|---|
 | 真朋友 | gift | reputation +20 + 社交感谢 | 0 | ✅ 默认就是 |
-| V2EX 网友 | kudos | 计数 +N | 计数 -N (不可转, 5%/月衰减) | ❌ 设计完成, 1-2 天补 |
-| 陌生人/紧急 | USDT-TRC20 micropay | 直接收 USDT 到自己钱包 | 0.01 USDT/1k token + TRX gas | ❌ 设计完成, 1-2 天补 |
+| V2EX 网友 | kudos | 计数 +N | 计数 -N (不可转, 5%/月衰减) | ✅ MVP 已 ship |
+| 陌生人/紧急 | USDT-TRC20 micropay | 直接收 USDT 到自己钱包 | 0.01 USDT/1k token + TRX gas | ✅ MVP 已 ship (dry-run quote 真测过) |
 
 **sisoul 在 USDT micropay 里抽 0% — 借入方直接打钱给借出方, 我们不托管不路由. 守 §4.10**.
 
