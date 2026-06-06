@@ -179,9 +179,9 @@ intentionally not in the vault:
 - Credentials, API keys, secrets — never.
 - Sprint commits that contain or mention private credentials — filtered out
   during the cases dump.
-- Internal-only sprint orchestration prompts (`.remote-vps-task-*.md` etc.) —
-  these are about how `@founder`'s ancestors built it, not about what
-  `@founder` should know.
+- Internal-only sprint-orchestration prompts (the per-subagent task briefs
+  used during development) — these are about how `@founder`'s ancestors
+  built it, not about what `@founder` should know.
 
 The vault seed corpus is reviewable in `vault-template/founder/cases/`. All
 contents are intended for public read.

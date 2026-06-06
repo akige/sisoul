@@ -12,7 +12,10 @@
 ## 2. 装机一行命令
 
 ```bash
-curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash
+# alpha installer (release tarball + cosign + Pages install.sh 未上线, 走源码装)
+git clone https://github.com/akige/sisoul && cd sisoul
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e '.[daemon,crypto,chat,llm]'
 sisoul init  # 5 步 wizard 引导
 sisoul daemon start --background
 ```

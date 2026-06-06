@@ -36,7 +36,10 @@ Manual (avoid scripted `gh repo create` initial — sets visibility wrong):
 
 On a clean machine (or `--dry-run`):
 
-- [ ] `curl -sSfL https://github.com/akige/sisoul/releases/latest/download/install.sh | bash` (skip if you trust ops/install.sh shellcheck PASS)
+- [ ] `# alpha installer (release tarball + cosign + Pages install.sh 未上线, 走源码装)
+git clone https://github.com/akige/sisoul && cd sisoul
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e '.[daemon,crypto,chat,llm]'` (skip if you trust ops/install.sh shellcheck PASS)
 - [ ] OR install from source: `pip install -e ~/sisoul-dev` then `sisoul --version`
 - [ ] `sisoul init` — wizard 5 steps complete without error
 - [ ] `sisoul daemon start --background` — daemon up on :9876
