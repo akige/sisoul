@@ -151,8 +151,20 @@ class KuboGossipSubTransport(ChatTransport):
 
     @staticmethod
     def _encode_topic(topic: str) -> str:
-        # Kubo expects base64url-encoded topic in API since v0.11.
-        return base64.urlsafe_b64encode(topic.encode()).rstrip(b"=").decode()
+        # Kubo >= 0.27 requires the topic arg to be MULTIBASE-encoded; for
+        # base64url-without-padding the multibase prefix is 'u'. (Older kubo
+        # accepted bare base64url — that 500s on 0.32 with "URL arg must be
+        # multibase encoded".)
+        return "u" + base64.urlsafe_b64encode(topic.encode()).rstrip(b"=").decode()
+
+    @staticmethod
+    def _decode_data(data_field: str) -> bytes:
+        # kubo pubsub `data` may be multibase ('u' = base64url) on newer daemons,
+        # or bare base64 on older ones. Handle both.
+        if data_field[:1] == "u":
+            data_field = data_field[1:]
+        pad = "=" * (-len(data_field) % 4)
+        return base64.urlsafe_b64decode(data_field + pad)
 
     async def publish(self, topic: str, payload: bytes) -> None:
         client = await self._get_client()
@@ -179,13 +191,11 @@ class KuboGossipSubTransport(ChatTransport):
                         msg = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    data_b64 = msg.get("data", "")
-                    if not data_b64:
+                    data_field = msg.get("data", "")
+                    if not data_field:
                         continue
-                    # Kubo returns base64 (RFC 4648 padded URL-safe).
-                    pad = "=" * (-len(data_b64) % 4)
                     try:
-                        yield base64.urlsafe_b64decode(data_b64 + pad)
+                        yield self._decode_data(data_field)
                     except Exception:
                         continue
 
