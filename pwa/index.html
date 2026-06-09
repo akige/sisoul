@@ -22,13 +22,19 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // 注册 service worker (生产 build 才生效)
-      if ("serviceWorker" in navigator && location.protocol !== "about:") {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker
-            .register("/sw.js")
-            .catch((err) => console.warn("[sisoul] sw register failed:", err));
-        });
+      // alpha: 禁 service worker + 强卸旧 SW + 清 cache.
+      // 之前 /sw.js (404 路径错) 被部分 user 缓存, 命中后 intercept 所有
+      // 请求 → 黑屏. 这段代码强卸所有已注册 SW + 删 cache, 让 page 真显示.
+      // v1.0 stable 再加 PWA 离线 (那时路径用 import.meta.env.BASE_URL 拼).
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        }).catch(function () {});
+        if (window.caches) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          }).catch(function () {});
+        }
       }
     </script>
   </body>
