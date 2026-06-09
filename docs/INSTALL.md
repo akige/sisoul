@@ -3,6 +3,46 @@
 > Tested on macOS 14+, Ubuntu 22.04+, WSL2. Windows native is `beta v1.2 (T+2m)`.
 > See [Roadmap](../README.md#roadmap) for what each milestone ships.
 
+## One-line install (recommended)
+
+```bash
+# macOS / Linux / WSL2 — auto-detects OS + Python + kubo, no sudo
+curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash
+```
+
+What it does:
+
+1. detects OS (darwin/linux) + shell rc (zsh/bash)
+2. ensures Python 3.11+ (mac: `brew install python@3.12`; linux: hints `apt install`)
+3. ensures kubo / ipfs (mac: `brew install kubo`; linux: hints manual)
+4. `git clone` into `~/sisoul-app` (re-runs `git pull` if already cloned)
+5. creates `.venv` and runs `pip install -e '.[daemon,crypto,chat,llm]'`
+6. writes wrapper to `~/.local/bin/sisoul` + appends PATH to your rc
+7. verifies with `sisoul --version` + `sisoul self-check`
+
+Overrides:
+
+```bash
+# install to a custom dir
+SISOUL_HOME=$HOME/projects/sisoul curl -sSL ... | bash
+
+# skip all "Continue? [Y/n]" prompts (CI)
+SISOUL_ASSUME_YES=1 curl -sSL ... | bash
+
+# skip kubo install (you can add it later)
+SISOUL_SKIP_KUBO=1 curl -sSL ... | bash
+```
+
+## Homebrew (macOS)
+
+```bash
+brew install --formula https://raw.githubusercontent.com/akige/sisoul/main/Formula/sisoul.rb
+```
+
+Once the formula lands in `homebrew-core` (post-stable v1.0), this becomes
+simply `brew install sisoul`. For the alpha period we pin the URL to the
+file in this repo.
+
 ## Requirements
 
 - **Python 3.11+** (macOS default `3.9` does not work — use `brew install python@3.12` or `pyenv install 3.12.x`)

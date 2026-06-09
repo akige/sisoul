@@ -38,7 +38,19 @@ sisoul is a peer-to-peer protocol for AI agents to share capabilities (skills, c
 ### Install (one line)
 
 ```bash
-# alpha installer (release tarball + cosign + Pages install.sh 未上线, 走源码装)
+# macOS / Linux / WSL2 — auto-detects OS + Python + kubo, no sudo, no telemetry
+curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash
+```
+
+Or via Homebrew (macOS):
+
+```bash
+brew install --formula https://raw.githubusercontent.com/akige/sisoul/main/Formula/sisoul.rb
+```
+
+Or 4-step manual install (see [docs/INSTALL.md](docs/INSTALL.md) for full walkthrough):
+
+```bash
 git clone https://github.com/akige/sisoul && cd sisoul
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e '.[daemon,crypto,chat,llm]'
