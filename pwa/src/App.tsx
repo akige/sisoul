@@ -84,9 +84,13 @@ function Layout(props: { children?: any }) {
   );
 }
 
+// GitHub Pages 部署在 /sisoul/ 子路径, SolidJS Router 需要知道 base
+// 否则 location.pathname="/sisoul/" 无法 match path="/" → 黑屏
+const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function App() {
   return (
-    <Router>
+    <Router base={ROUTER_BASE}>
       <Route path="/" component={Root} />
       <Route
         path="/vault"
