@@ -45,8 +45,9 @@ sisoul chat recv                                        # 收消息
 
 **今天还没实现的 (诚实分级)**:
 
-- ⚠️ **USDT 自动到账确认** — 借入方手动付 USDT + 告诉借出方 tx hash, 借出方手动验证后 approve. 自动 chain-watcher 是 alpha v1.1 (T+1m).
-- ❌ **链上 mainnet attestation** — Sepolia testnet 跑通, mainnet 没上.
+- ✅ **链上 mainnet attestation** — Optimism mainnet EAS 真注册. 第一个 username `@akige` 已上链 ([tx 0xabcb1bab...](https://optimistic.etherscan.io/tx/0xabcb1bab93946d491503a6e1368ee8c6b870085e185eed83f629459d865bb72c) · [easscan attestation](https://optimism.easscan.org/attestation/view/0x78375e7ed6cbec575f630be8e32377da91de4801e6f9799bfb16a7c71ca6acdb)). 任何人 `sisoul username resolve akige` 立刻通过 easscan GraphQL 拿到 did:key, 整链路 0 中心化 server. 你的 username 注册 = 你自己签 + 你自己付 ~$0.5-1 OP ETH gas, sisoul 完全不沾钱也不沾权.
+- ✅ **USDT 自动到账确认** — alpha v1.1 已 ship. `sisoul lend auto-approve enable` 后, 借出方 daemon 每 30s 轮询 TronGrid, USDT 到账自动 approve + GossipSub 发 ACK 给借入方. 借出方 0 手工干预.
+- ✅ **A3 借用走 GossipSub** — 借用请求不再走 Waku push, 改走 IPFS kubo GossipSub per-DID topic (`/sisoul/lend/v1/<sha256(did):16>`). 完全去中心化, aws/cloud 主机 host_policy 物理拒跑 GossipSub.
 - ❌ **macOS 菜单栏 native app / iOS / Android** — Roadmap T+1m~T+2m, 0 代码.
 - ❌ **install.sh 一行装** — release tarball + cosign 没出, 现在走 `git clone + pip install -e` 真路径.
 
