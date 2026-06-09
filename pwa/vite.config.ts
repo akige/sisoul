@@ -1,9 +1,9 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 
-// P2-EF: base 路径适配 GitHub Pages 部署 sisoul.github.io/sisoul-pwa/.
+// base 路径适配 GitHub Pages 部署 akige.github.io/sisoul/ (项目页).
 // 本地 dev / preview / vitest 不需要 base, 用 VITE_BASE='/' override.
-const BASE = process.env.VITE_BASE ?? "/sisoul-pwa/";
+const BASE = process.env.VITE_BASE ?? "/sisoul/";
 
 export default defineConfig({
   base: BASE,

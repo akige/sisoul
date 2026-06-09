@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "solid-js";
+import { lazy, Suspense, createSignal, onMount, onCleanup, Show } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import OnboardingScreen from "./components/OnboardingScreen";
 
 // 7 路由 lazy 加载 (chunk splitting 使初始 payload 最小)
 const Vault = lazy(() => import("./routes/Vault"));
@@ -20,6 +21,52 @@ const SkillsV2 = lazy(() => import("./routes/SkillsV2"));
 const Stats = lazy(() => import("./routes/Stats"));
 const Cheatsheet = lazy(() => import("./routes/Cheatsheet"));
 const V3RSI = lazy(() => import("./routes/V3RSI"));
+
+const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE || "http://127.0.0.1:9876";
+
+// 根路由 daemon 检测 — offline 显示 OnboardingScreen, online 显示 Vault
+// 与 TopBar.tsx 的 health() 检测独立, 但用同 /sisoul/health endpoint
+function Root() {
+  // null = 未知 (首次加载), true = online, false = offline
+  const [daemonOnline, setDaemonOnline] = createSignal<boolean | null>(null);
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const checkHealth = async () => {
+    try {
+      const r = await fetch(`${DAEMON_BASE}/sisoul/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      setDaemonOnline(r.ok);
+    } catch {
+      setDaemonOnline(false);
+    }
+  };
+
+  onMount(() => {
+    checkHealth();
+    // 15s poll — daemon 一上线就自动切到 Vault
+    timer = setInterval(checkHealth, 15_000);
+  });
+
+  onCleanup(() => {
+    if (timer) clearInterval(timer);
+  });
+
+  return (
+    <Show
+      when={daemonOnline() === true}
+      fallback={
+        // 首次未知或 offline → OnboardingScreen
+        // null 时也显示 OnboardingScreen, 比"加载中..."更友好且很快会切
+        <OnboardingScreen />
+      }
+    >
+      <Layout>
+        <Vault />
+      </Layout>
+    </Show>
+  );
+}
 
 function Layout(props: { children?: any }) {
   return (
@@ -40,14 +87,7 @@ function Layout(props: { children?: any }) {
 export default function App() {
   return (
     <Router>
-      <Route
-        path="/"
-        component={() => (
-          <Layout>
-            <Vault />
-          </Layout>
-        )}
-      />
+      <Route path="/" component={Root} />
       <Route
         path="/vault"
         component={() => (

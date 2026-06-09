@@ -1,0 +1,17 @@
+# Jekyll 配置 — 仅用于 GH Pages legacy build (workflow 模式下不会被读取, 留作 fallback)
+# 排除 PWA dist 目录, Jekyll 不要碰 (含 _ 开头文件会被默认忽略, 但显式 exclude 更稳)
+exclude:
+  - docs-pwa/
+  - pwa/
+  - node_modules/
+  - .venv/
+  - tests/
+  - qa/
+  - contracts/
+  - src/
+  - sdk/
+  - dist/
+
+# 站点 metadata (legacy build 时显示)
+title: sisoul
+description: "Your AI agent. Your data. No cloud."

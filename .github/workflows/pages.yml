@@ -1,0 +1,64 @@
+name: Deploy PWA to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pwa/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch: {}
+
+# GH Pages 部署所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 单一并发 — 同时只跑一份, 取消旧的
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (base=/sisoul/)
+        run: npm run build
+        env:
+          VITE_BASE: /sisoul/
+
+      - name: SPA 404 fallback (拷 index.html → 404.html, GH Pages 子路径 SPA 必备)
+        run: cp dist/index.html dist/404.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pwa/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
