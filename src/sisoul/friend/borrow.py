@@ -44,8 +44,11 @@ from sisoul.friend.lend import (
     RequestStateError,
 )
 
-# Wave B' P1-1 (agent-B3): borrow 流程关键节点推 friend daemon (Waku store-and-forward).
-# push.notify_friend_sync 在 PushService 未初始化 / Waku 不可用时优雅 noop, 不影响 borrow 流程.
+# v1.0-stable A3 (2026-06-09): primary lend-request transport is GossipSub
+# (sisoul.friend.lend_gossipsub.publish_lend_request) — fully decentralised,
+# no central directory. Waku _push_notify_friend_sync is kept as a soft
+# fallback only and is a no-op when Waku isn't available (default in
+# v1.0-stable).
 try:
     from sisoul.p2p.push import notify_friend_sync as _push_notify_friend_sync
 except Exception:  # noqa: BLE001 — push 模块未就绪绝不阻塞 borrow
@@ -53,7 +56,53 @@ except Exception:  # noqa: BLE001 — push 模块未就绪绝不阻塞 borrow
 
 
 def _safe_notify(friend_did: str, kind: str, payload: dict) -> None:
-    """call push.notify_friend_sync 但永不抛 (borrow 主流程不许被推送拖死)."""
+    """v1.0-stable: prefer GossipSub publish_lend_request/ack; fall back to
+    legacy Waku push. Never raises (borrow 主流程不许被推送拖死)."""
+    # 1. GossipSub (primary path) ─ best-effort schedule on running loop.
+    try:
+        from sisoul.friend.lend_gossipsub import (
+            publish_lend_request,
+            publish_lend_ack,
+        )
+        import asyncio as _aio
+
+        try:
+            from sisoul.chat.transport import get_default_transport  # type: ignore
+            transport = get_default_transport()
+        except Exception:
+            transport = None
+        if transport is not None:
+            async def _publish() -> None:
+                try:
+                    if kind == "borrow_request":
+                        await publish_lend_request(
+                            transport,
+                            borrower_did=payload.get("borrower_did", ""),
+                            lender_did=friend_did,
+                            request_body=payload,
+                        )
+                    elif kind in ("lend_response", "lend_ack"):
+                        await publish_lend_ack(
+                            transport,
+                            lender_did=payload.get("lender_did", "") or "",
+                            borrower_did=friend_did,
+                            request_id=payload.get("lend_request_id", ""),
+                            decision=str(payload.get("status", "approved")),
+                            reason=payload.get("reason"),
+                        )
+                except Exception:
+                    pass
+            try:
+                loop = _aio.get_running_loop()
+                loop.create_task(_publish())
+            except RuntimeError:
+                try:
+                    _aio.run(_publish())
+                except Exception:
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
+    # 2. Waku fallback (only fires if push module is loaded).
     if _push_notify_friend_sync is None:
         return
     try:

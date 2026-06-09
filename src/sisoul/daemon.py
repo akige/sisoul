@@ -355,6 +355,84 @@ def create_app() -> FastAPI:
 
         _asyncio.create_task(_loop())
 
+    # ── Workstream A3: subscribe lend-request topic + LendAutoApprover (v1.1) ──
+    # Lender daemon receives borrow-requests via GossipSub instead of Waku push.
+    # Auto-approves micropay requests once TronGrid confirms USDT payment (opt-in).
+    @app.on_event("startup")
+    async def _maybe_start_lend_loops() -> None:
+        import asyncio as _aio
+        from pathlib import Path as _Path
+        import os as _os
+
+        from sisoul.p2p.host_policy import cloud_refusal_reason
+
+        if cloud_refusal_reason() is not None:
+            return  # red line: no P2P / lend service on cloud hosts
+        vault = _Path(_os.environ.get("SISOUL_VAULT", str(_Path.home() / ".sisoul"))).expanduser()
+        if not (vault / "seed.txt").exists():
+            print("[daemon] no seed — lend loops skipped.", file=sys.stderr)
+            return
+
+        async def _boot_lend() -> None:
+            # Wait for kubo to be up before reaching for the pubsub transport
+            await _aio.sleep(8)
+            try:
+                from sisoul.cli_commands.chat import _build_manager
+                from sisoul.chat.transport import set_default_transport
+                from sisoul.friend.lend_gossipsub import subscribe_lend_requests
+                from sisoul.friend.lend import LendStore
+                from sisoul.friend.lend_auto_approve import LendAutoApprover, is_enabled
+
+                mgr = _build_manager(False)
+                transport = mgr.transport
+                set_default_transport(transport)  # let borrow.py find it
+                my_did = mgr.local_did
+                print(f"[daemon] lend loops bound to did={my_did}", file=sys.stderr)
+
+                # Persist inbound borrow-requests into LendStore so `sisoul lend list`
+                # / approve / deny can act on them.
+                async def _ingest_loop() -> None:
+                    while True:
+                        try:
+                            async for env in subscribe_lend_requests(transport, my_did):
+                                try:
+                                    body = env.body or {}
+                                    with LendStore() as store:
+                                        try:
+                                            store.request_lend(
+                                                borrower_did=env.sender_did,
+                                                lender_did=my_did,
+                                                resource_type=str(body.get("resource_type", "llm-call")),
+                                                amount=int(body.get("amount", 0) or 0),
+                                                model=str(body.get("model", "")),
+                                                mode=str(body.get("mode", "per-request")),
+                                                ttl_sec=int(body.get("ttl_sec", 3600)),
+                                                emergency_flag=bool(body.get("emergency_flag", False)),
+                                                note=__import__("json").dumps(body),
+                                            )
+                                        except Exception as e:  # noqa: BLE001
+                                            # de-dup / schema mismatch — ignore
+                                            print(f"[daemon] lend ingest skip: {type(e).__name__}: {e}", file=sys.stderr)
+                                except Exception:
+                                    continue
+                        except Exception as e:  # noqa: BLE001  (kubo down / transient)
+                            print(f"[daemon] lend ingest loop crashed: {e}; retrying in 10s", file=sys.stderr)
+                            await _aio.sleep(10)
+
+                _aio.create_task(_ingest_loop())
+
+                # v1.1 auto-approve (opt-in: lender ran `sisoul lend auto-approve enable`)
+                if is_enabled():
+                    approver = LendAutoApprover(my_did, transport=transport)
+                    await approver.start()
+                    print("[daemon] lend auto-approve loop started", file=sys.stderr)
+                else:
+                    print("[daemon] lend auto-approve disabled (opt-in: sisoul lend auto-approve enable)", file=sys.stderr)
+            except Exception as e:  # noqa: BLE001
+                print(f"[daemon] lend loops init failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+        _aio.create_task(_boot_lend())
+
     return app
 
 

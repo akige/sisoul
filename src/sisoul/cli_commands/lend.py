@@ -129,3 +129,58 @@ def cmd_history(
         return
     for d in data:
         _print_req(d)
+
+
+# ── v1.1 auto-approve (micropay USDT chain-watcher) ────────────────────────
+
+auto_app = typer.Typer(
+    name="auto-approve",
+    help="自动批准 micropay borrow request (USDT 到账后自动 approve).",
+    no_args_is_help=True,
+)
+lend_app.add_typer(auto_app, name="auto-approve")
+
+
+@auto_app.command("enable")
+def cmd_auto_enable() -> None:
+    """开启 lend auto-approve 后台 daemon (下次启动生效).
+
+    daemon 起来后每 30s 扫一次 pending micropay request, 查 TronGrid
+    确认 USDT 到账后自动 approve_lend + 在 GossipSub 上发 ACK 给 borrower.
+    """
+    from sisoul.friend.lend_auto_approve import set_enabled
+    set_enabled(True)
+    typer.echo("OK lend auto-approve ENABLED.")
+    typer.echo("  restart `sisoul daemon` for the change to take effect.")
+    typer.echo("  watcher polls TronGrid every 30s; matched tx → approve_lend.")
+
+
+@auto_app.command("disable")
+def cmd_auto_disable() -> None:
+    """关闭 lend auto-approve (后续 micropay request 改为手工 approve)."""
+    from sisoul.friend.lend_auto_approve import set_enabled
+    set_enabled(False)
+    typer.echo("OK lend auto-approve DISABLED.")
+    typer.echo("  restart `sisoul daemon` for the change to take effect.")
+
+
+@auto_app.command("status")
+def cmd_auto_status(
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """显示 auto-approve 当前开关状态 + (若运行中) 上次轮询时间."""
+    from sisoul.friend.lend_auto_approve import is_enabled, _vault_config_path
+    enabled = is_enabled()
+    p = _vault_config_path()
+    payload = {
+        "enabled": enabled,
+        "config_path": str(p),
+        "config_exists": p.exists(),
+    }
+    if json_out:
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    typer.echo(f"auto-approve: {'ENABLED' if enabled else 'DISABLED'}")
+    typer.echo(f"  config:    {p}")
+    if not p.exists():
+        typer.echo("  (config absent — defaults to DISABLED)")

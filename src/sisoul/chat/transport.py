@@ -230,6 +230,29 @@ class WireEnvelope:
         return cls(kind=d["kind"], body=d["body"])
 
 
+# ---------------------------------------------------------------------------
+# Daemon-process-wide default transport (set by daemon startup, read by
+# borrow / lend_gossipsub / etc. to avoid threading the transport through
+# every call site).
+# ---------------------------------------------------------------------------
+
+_default_transport: ChatTransport | None = None
+
+
+def set_default_transport(t: ChatTransport | None) -> None:
+    """Register the process-wide default transport (called by daemon startup).
+
+    Passing None clears the registration.
+    """
+    global _default_transport
+    _default_transport = t
+
+
+def get_default_transport() -> ChatTransport | None:
+    """Return the process-wide default transport, or None if not set up yet."""
+    return _default_transport
+
+
 __all__ = [
     "ChatTransport",
     "MemoryTransport",
@@ -239,4 +262,6 @@ __all__ = [
     "prekey_topic_for",
     "get_shared_memory_transport",
     "reset_shared_memory_transport",
+    "set_default_transport",
+    "get_default_transport",
 ]
