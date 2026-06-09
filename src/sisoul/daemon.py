@@ -462,7 +462,7 @@ def create_app() -> FastAPI:
     #   1. 安装位置 (pip install 后, packaged): sisoul/pwa_static/
     #   2. dev clone: <repo>/pwa/dist/
     try:
-        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
         from pathlib import Path as _P
         import sisoul as _sisoul_pkg
         _pkg_dir = _P(_sisoul_pkg.__file__).parent
@@ -472,9 +472,34 @@ def create_app() -> FastAPI:
         ]
         _pwa_root = next((p for p in _candidates if (p / "index.html").exists()), None)
         if _pwa_root is not None:
-            # SPA 模式: html=True 让 / 默认返 index.html
-            app.mount("/app", StaticFiles(directory=str(_pwa_root), html=True), name="pwa")
-            print(f"[daemon] PWA mounted at /app/ from {_pwa_root}", file=sys.stderr)
+            # SPA fallback 模式 (StaticFiles html=True 不够 — sub-path /app/vault
+            # 没对应文件就 404, 让浏览器拿到 JSON 而非 PWA index.html, 菜单点击全炸).
+            # 这里 catch-all: 文件存在 → serve; 不存在 → 返 index.html 让 client
+            # router 处理. PWA SPA 标准做法.
+            _pwa_index = _pwa_root / "index.html"
+
+            @app.get("/app", include_in_schema=False)
+            @app.get("/app/", include_in_schema=False)
+            async def _pwa_index_route():
+                return FileResponse(_pwa_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+            @app.get("/app/{full_path:path}", include_in_schema=False)
+            async def _pwa_spa(full_path: str):
+                # 防 path traversal: 限定在 _pwa_root 子树
+                target = (_pwa_root / full_path).resolve()
+                try:
+                    target.relative_to(_pwa_root.resolve())
+                except ValueError:
+                    return FileResponse(_pwa_index)  # 越界 → SPA fallback
+                if target.is_file():
+                    # asset (含 hash) 强 cache
+                    headers = {"Cache-Control": "public, max-age=31536000, immutable"} \
+                        if "/assets/" in full_path else {}
+                    return FileResponse(target, headers=headers)
+                # SPA fallback — 任何不存在的 path 都返 index.html
+                return FileResponse(_pwa_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+            print(f"[daemon] PWA mounted at /app/ (SPA fallback) from {_pwa_root}", file=sys.stderr)
         else:
             print(f"[daemon] PWA not found in any of {_candidates} — /app/ not mounted "
                   f"(rebuild: cd pwa && npm run build)", file=sys.stderr)
