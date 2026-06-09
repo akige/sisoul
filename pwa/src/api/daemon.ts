@@ -43,7 +43,20 @@ export interface Preference {
 }
 
 export function listPreferences(): Promise<{ items: Preference[] }> {
-  return daemonFetch("/preferences/list");
+  // daemon 真返 array of {id, path, title, tags, updated} —— PWA 期望
+  // {items: [{key, value, updated_at}, ...]}. Adapter 把 array→object 同时
+  // 把 field rename (title→key, ?→value, updated→updated_at). 防 undefined
+  // 全程 ?? "" fallback, 不让 caller `.length` 炸.
+  return daemonFetch<any>("/preferences/list").then((d) => {
+    const arr: any[] = Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : [];
+    return {
+      items: arr.map((r) => ({
+        key: r.key ?? r.title ?? r.id ?? "(no key)",
+        value: r.value ?? r.summary ?? r.body ?? r.path ?? "",
+        updated_at: r.updated_at ?? r.updated ?? "",
+      })),
+    };
+  });
 }
 
 // ── Goals ─────────────────────────────────────────────────────────────────
@@ -53,10 +66,26 @@ export interface Goal {
   progress: number;
   deadline?: string;
   notes?: string;
+  status?: string;
 }
 
 export function listGoals(): Promise<{ goals: Goal[] }> {
-  return daemonFetch("/goals/list");
+  // daemon 真返 array of {id, path, title, progress, status, target_date,
+  // updated} —— PWA 期望 {goals: [{id, title, progress, deadline?, notes?}]}.
+  // Adapter: array → object + target_date → deadline.
+  return daemonFetch<any>("/goals/list").then((d) => {
+    const arr: any[] = Array.isArray(d) ? d : Array.isArray(d?.goals) ? d.goals : [];
+    return {
+      goals: arr.map((r) => ({
+        id: r.id ?? "",
+        title: r.title ?? "(no title)",
+        progress: typeof r.progress === "number" ? r.progress : 0,
+        deadline: r.deadline ?? r.target_date ?? undefined,
+        notes: r.notes ?? r.summary ?? undefined,
+        status: r.status ?? "active",
+      })),
+    };
+  });
 }
 
 // ── Chat History ──────────────────────────────────────────────────────────
@@ -109,7 +138,12 @@ export interface Friend {
 }
 
 export function listFriends(): Promise<{ friends: Friend[] }> {
-  return daemonFetch("/friend/list");
+  // adapter: daemon 返 array, 兜底 {friends: []} 不让 caller `.length` 炸
+  return daemonFetch<any>("/friend/list").then((d) => {
+    const arr: any[] = Array.isArray(d) ? d : Array.isArray(d?.friends) ? d.friends : [];
+    return { friends: arr };
+  }) as Promise<{ friends: Friend[] }>;
+  // legacy direct (kept for ref): return daemonFetch("/friend/list");
 }
 
 export interface AddFriendRequest {
