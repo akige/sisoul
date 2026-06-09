@@ -59,6 +59,42 @@ export ANTHROPIC_API_KEY=sk-ant-...
 SISOUL_RSI_PROVIDER=anthropic sisoul founder chat "比较 sisoul 跟 ChatGPT"
 ```
 
+## Borrow / lend LLM between two daemons (A3 · v1.0-stable)
+
+Lender Alice runs a daemon with her own API key; borrower Bob (no key) sends
+a borrow request to Alice's `did:key`. The request travels on a per-DID
+GossipSub topic over kubo IPFS — no central directory, no public relay.
+
+```bash
+# Both sides — start the daemon (it auto-embeds kubo on mac/wsl/win)
+sisoul daemon &
+sisoul net status        # should show ≥3 swarm peers within ~60s
+
+# Alice (lender) — register a permission for Bob
+sisoul friend add @bob   # resolves the EAS username → bob's did:key
+sisoul lend perm set @bob --mode per-request --quota-1k 5
+
+# Bob (borrower) — send a borrow request
+sisoul borrow @alice --amount 1000 --model claude-haiku
+# → publishes on /sisoul/lend/v1/<sha256(alice_did):16> over GossipSub
+# Alice's daemon ingests it into LendStore; her PWA / CLI shows pending.
+
+# Alice — approve / deny manually
+sisoul lend list                  # shows pending
+sisoul lend approve <request-id>  # publishes ack on /sisoul/lend-ack/v1/<bob>
+
+# v1.1 — optional USDT auto-approve for micropay mode
+sisoul lend perm set @bob --mode micropay --usdt-per-1k 0.05 --usdt-payout TQ...
+sisoul lend auto-approve enable       # opt-in, persisted to vault
+sisoul lend auto-approve status       # confirms ENABLED
+# Restart Alice's daemon; her LendAutoApprover polls TronGrid every 30s.
+# Once Bob pays 0.05 USDT to TQ..., Alice's daemon auto-approves + acks.
+```
+
+The lend transport never touches a server we run. Topics are derived from a
+SHA-256 of the lender/borrower DID; GossipSub routes via kubo peers; the
+USDT chain-watcher uses the public TronGrid HTTP API (read-only, no key).
+
 ## Troubleshooting
 
 ### `sisoul: command not found`
