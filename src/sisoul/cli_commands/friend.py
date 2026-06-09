@@ -453,6 +453,37 @@ def cmd_add(
     )
 
 
+@friend_app.command("list-didkey")
+def cmd_list_didkey(
+    vault_dir: Optional[Path] = typer.Option(
+        None, "--vault-dir", help="vault 目录 (默认 ~/.sisoul/)"
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """列 did:key 朋友 cache (由 `sisoul friend add` / `add @username` 写入).
+
+    跟 `sisoul friend list` 不同 — 那个读 EAS 双向 attestation 朋友 (sqlite);
+    这个读 ~/.sisoul/identity/didkey_friends.json 轻量层.
+    """
+    entries = _load_did_key_friends(vault_dir)
+    fp = _did_key_friends_path(vault_dir)
+    if json_output:
+        typer.echo(json.dumps({"count": len(entries), "path": str(fp), "friends": entries},
+                              ensure_ascii=False, indent=2))
+        return
+    if not entries:
+        typer.echo(f"(no did:key friends yet @ {fp})")
+        typer.echo("  add one: sisoul friend add @<username>  (or did:key:z...)")
+        return
+    typer.echo(f"did:key friends ({len(entries)}):")
+    for e in entries:
+        nick = e.get("nickname", "") or "-"
+        eas = e.get("resolved_via_eas") or {}
+        suffix = f"  [EAS @{eas.get('username')} on {eas.get('network')}]" if eas else ""
+        typer.echo(f"  {nick:<20}  {e['did']}{suffix}")
+        typer.echo(f"    pubkey: {e['pubkey_hex'][:32]}... ({e.get('key_type','?')}) · added {e.get('added_at','-')}")
+
+
 # ── friend mdns (P2-CD · 局域网朋友发现) ──────────────────────────────────────
 
 mdns_app = typer.Typer(

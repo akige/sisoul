@@ -275,6 +275,11 @@ def cmd_show(
         "--seed-file",
         help=f"BIP-39 mnemonic 文件路径 (默认 {DEFAULT_SEED_FILE})",
     ),
+    vault_dir: Path = typer.Option(
+        None,
+        "--vault-dir",
+        help="vault 目录 (默认 ~/.sisoul/, 多 vault 切换用 — seed 自动取 <vault>/seed.txt)",
+    ),
     index: int = typer.Option(
         0, "--index", help="did:key 派生 index (默认 0)"
     ),
@@ -285,6 +290,10 @@ def cmd_show(
 
     无需链上注册, 同 seed + 同 index 跨设备一致.
     """
+    # --vault-dir 优先级 > --seed-file > default
+    if seed_file is None and vault_dir is not None:
+        seed_file = Path(vault_dir).expanduser() / "seed.txt"
+
     try:
         mnemonic = load_mnemonic_from_file(seed_file)
     except FileNotFoundError:
