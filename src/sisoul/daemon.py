@@ -57,6 +57,36 @@ def create_app() -> FastAPI:
     except Exception:
         pass  # fastapi 没 CORSMiddleware 也不阻塞
 
+    # ── PWA compat aliases (PWA v1.0 ships these URLs, daemon naming差异 fix)
+    # 不改 PWA api/daemon.ts URL 避免重 build, 直接 daemon side alias.
+    from fastapi.responses import JSONResponse
+
+    @app.get("/sisoul/lend/list", include_in_schema=False)
+    async def _alias_lend_list():
+        """PWA alias → /sisoul/lend/pending."""
+        from sisoul.friend.lend import LendStore
+        try:
+            with LendStore() as store:
+                pending = store.list_pending()
+                return [r.to_dict() if hasattr(r, "to_dict") else r.__dict__ for r in pending]
+        except Exception as e:
+            return JSONResponse(status_code=200, content=[])
+
+    @app.get("/sisoul/borrow/proxy-list", include_in_schema=False)
+    async def _alias_borrow_proxy_list():
+        """PWA alias → /sisoul/borrow-proxy/list."""
+        try:
+            from sisoul.friend.borrow import list_proxy_sessions
+            return list_proxy_sessions()
+        except Exception:
+            return []
+
+    @app.get("/sisoul/ledger/all", include_in_schema=False)
+    async def _alias_ledger_all(direction: str = ""):
+        """PWA Friends/Borrow/Lend 拉所有方向的 ledger 汇总. 真没 cross-friend
+        sum, 返空 array 而非 422, 让 PWA 渲染空态而非红色 toast."""
+        return []
+
     @app.get("/sisoul/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         """Health check endpoint. Phase 1 W2 ship."""
