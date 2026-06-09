@@ -87,6 +87,30 @@ def create_app() -> FastAPI:
         sum, 返空 array 而非 422, 让 PWA 渲染空态而非红色 toast."""
         return []
 
+    @app.get("/sisoul/notify/stream", include_in_schema=False)
+    async def _alias_notify_stream():
+        """PWA Friends.tsx 用 EventSource (SSE GET) 监听 friend.online /
+        lend.request 推送. daemon 真有 WS /notify/stream 但 PWA 没接 WS, 这里
+        加 SSE GET 兼容. 真实现先返 30s heartbeat keep-alive, 不阻断 UI."""
+        from fastapi.responses import StreamingResponse
+        import asyncio as _aio
+
+        async def _heartbeat():
+            # SSE format: "event: heartbeat\ndata: {}\n\n"
+            # 持续 keep-alive, browser EventSource 不报错
+            try:
+                while True:
+                    yield b"event: heartbeat\ndata: {}\n\n"
+                    await _aio.sleep(30)
+            except _aio.CancelledError:
+                return
+
+        return StreamingResponse(
+            _heartbeat(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.get("/sisoul/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         """Health check endpoint. Phase 1 W2 ship."""
