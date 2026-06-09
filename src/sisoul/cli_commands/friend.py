@@ -350,12 +350,16 @@ def cmd_add(
     friend_did: str = typer.Argument(
         ...,
         help=(
-            "朋友 did:key:z... (W3C-CCG did:key, X25519 pubkey). "
+            "朋友 did:key:z... 或 @username (EAS Optimism username resolve). "
             "对 did:sisoul:* 用 'sisoul friend request'."
         ),
     ),
     nickname: str = typer.Option(
         "", "--nickname", "-n", help="本地昵称 (可选, 仅本地显示)"
+    ),
+    network: str = typer.Option(
+        "optimism-mainnet", "--network",
+        help="EAS username resolve 网络 (仅 @username 模式生效)",
     ),
     vault_dir: Optional[Path] = typer.Option(
         None, "--vault-dir", help="vault 目录 (默认 ~/.sisoul/)"
@@ -366,7 +370,35 @@ def cmd_add(
 
     Wave B' P0-3: did:key 朋友走 X25519 libsodium box 直接加密通信,
     无需双向 attestation. 跟 `friend request` (EAS attestation 重路径) 共存.
+
+    v1.0-stable: 支持 `@username` 形式 — 自动走 EAS Optimism resolve 拿 did:key,
+    再 cache + libsodium box 配键 (Signal-style flow).
     """
+    # @username 模式: 先 EAS resolve → 真 did:key
+    resolved_via_eas = None
+    if friend_did.startswith("@"):
+        name = friend_did[1:]
+        try:
+            from sisoul.onchain.username_eas import (
+                resolve_username as _eas_resolve,
+                UsernameEASError,
+            )
+            did_from_eas = _eas_resolve(name, network=network)
+        except UsernameEASError as e:
+            typer.echo(f"ERROR: EAS resolve @{name} 失败 ({network}): {e}", err=True)
+            raise typer.Exit(code=2)
+        if did_from_eas is None:
+            typer.echo(
+                f"NO MATCH: @{name} 在 {network} 上没注册. "
+                f"试 `sisoul username discover --network {network}` 看有谁",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        friend_did = did_from_eas
+        resolved_via_eas = {"username": name, "network": network}
+        if not nickname:
+            nickname = f"@{name}"
+
     try:
         dk = decode_did_key(friend_did)
     except DidKeyError as e:
@@ -390,6 +422,8 @@ def cmd_add(
         "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "method": "did:key",
     }
+    if resolved_via_eas is not None:
+        record["resolved_via_eas"] = resolved_via_eas
 
     if existing_idx is not None:
         entries[existing_idx] = {**entries[existing_idx], **record}
