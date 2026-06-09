@@ -49,7 +49,9 @@ sisoul chat recv                                        # 收消息
 - ✅ **USDT 自动到账确认** — alpha v1.1 已 ship. `sisoul lend auto-approve enable` 后, 借出方 daemon 每 30s 轮询 TronGrid, USDT 到账自动 approve + GossipSub 发 ACK 给借入方. 借出方 0 手工干预.
 - ✅ **A3 借用走 GossipSub** — 借用请求不再走 Waku push, 改走 IPFS kubo GossipSub per-DID topic (`/sisoul/lend/v1/<sha256(did):16>`). 完全去中心化, aws/cloud 主机 host_policy 物理拒跑 GossipSub.
 - ✅ **install.sh 一行装** — `curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash` 真测过, 自动探测 OS + Python + kubo + 写 wrapper + PATH. mac 还可 `brew install --formula https://.../Formula/sisoul.rb`.
-- ❌ **macOS 菜单栏 native app / iOS / Android** — Roadmap T+1m~T+2m, 0 代码.
+- ✅ **macOS 菜单栏 native app** — `tools/menubar/` 已 ship. `cd tools/menubar && bash build_app.sh` 真打出 29MB `Sisoul.app` (rumps + py2app), Finder 双击就跑. menu bar 显示 `S•` (online) / `S` (offline) + 15 个菜单项 (Add friend / Ask founder / Borrow LLM / Start-Stop daemon / Open dashboard ...). 真测过 `Add friend...` 弹 native dialog 真发 subprocess 调 sisoul CLI, EAS Optimism resolve 真打到 mainnet GraphQL.
+- ✅ **PWA dashboard 上线** — [akige.github.io/sisoul/](https://akige.github.io/sisoul/) 浏览器打开就看. daemon offline 时显示 5 步装机命令 (带复制按钮) + 3 核心场景卡片 + GitHub/INSTALL 底链; daemon online 切到 Vault/Friends/Lend/Borrow/Chat 全功能 UI.
+- ❌ **iOS / Android native app** — Skeleton 在 `mobile/{ios,android}/` (Swift Package + Kotlin Gradle), 单元测试通过但**没用户能下载的 .ipa / .apk**. Roadmap T+1m~T+2m.
 
 ## 3 个核心场景
 
