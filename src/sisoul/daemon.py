@@ -36,6 +36,27 @@ def create_app() -> FastAPI:
         description=f"sisoul meta-layer daemon ({__phase__}). 元层协议本地 HTTP API.",
     )
 
+    # ── CORS (允许 GH Pages https://akige.github.io 跨域访问本机 daemon, 备用)
+    # 主路径仍是 daemon-served PWA on http://127.0.0.1:<port>/app/ (same-origin
+    # 不需要 CORS), 但 GH Pages 上的 PWA 有时也想 fetch 本机 daemon, 给开.
+    try:
+        from fastapi.middleware.cors import CORSMiddleware
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "https://akige.github.io",
+                "http://127.0.0.1:9876",
+                "http://localhost:9876",
+                "http://127.0.0.1:5173",  # vite dev
+                "http://localhost:5173",
+            ],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    except Exception:
+        pass  # fastapi 没 CORSMiddleware 也不阻塞
+
     @app.get("/sisoul/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         """Health check endpoint. Phase 1 W2 ship."""
@@ -432,6 +453,33 @@ def create_app() -> FastAPI:
                 print(f"[daemon] lend loops init failed: {type(e).__name__}: {e}", file=sys.stderr)
 
         _aio.create_task(_boot_lend())
+
+    # ── PWA static mount at /app/ ───────────────────────────────────────────
+    # 让 daemon 自己 serve PWA, 避免 GitHub Pages https → http://127.0.0.1
+    # mixed content block. 用户访问 http://127.0.0.1:9876/app/ 走 same-origin,
+    # 浏览器无 CORS / mixed content 限制.
+    # PWA build artifact 找:
+    #   1. 安装位置 (pip install 后, packaged): sisoul/pwa_static/
+    #   2. dev clone: <repo>/pwa/dist/
+    try:
+        from fastapi.staticfiles import StaticFiles
+        from pathlib import Path as _P
+        import sisoul as _sisoul_pkg
+        _pkg_dir = _P(_sisoul_pkg.__file__).parent
+        _candidates = [
+            _pkg_dir / "pwa_static",  # 打包后
+            _pkg_dir.parent.parent / "pwa" / "dist",  # dev clone
+        ]
+        _pwa_root = next((p for p in _candidates if (p / "index.html").exists()), None)
+        if _pwa_root is not None:
+            # SPA 模式: html=True 让 / 默认返 index.html
+            app.mount("/app", StaticFiles(directory=str(_pwa_root), html=True), name="pwa")
+            print(f"[daemon] PWA mounted at /app/ from {_pwa_root}", file=sys.stderr)
+        else:
+            print(f"[daemon] PWA not found in any of {_candidates} — /app/ not mounted "
+                  f"(rebuild: cd pwa && npm run build)", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001
+        print(f"[daemon] PWA mount failed: {type(e).__name__}: {e}", file=sys.stderr)
 
     return app
 
