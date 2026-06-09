@@ -288,6 +288,48 @@ def register_username(
             f"RPC chain_id={onchain_id} 与 {chain.network}(期望 {chain.chain_id}) 不符"
         )
 
+    # ── ensure schema registered on this chain (one-time per chain) ────────
+    # EAS schema UIDs are deterministic across chains (keccak256 of schema +
+    # resolver + revocable), but the SchemaRegistry per-chain must still have
+    # an entry for that UID before attest() will accept it. attest() reverts
+    # with InvalidSchema() (0xbf37b20e) when missing. Register on-demand.
+    sr_abi_get = [{"inputs": [{"name": "uid", "type": "bytes32"}], "name": "getSchema",
+                   "outputs": [{"components": [
+                       {"name": "uid", "type": "bytes32"},
+                       {"name": "resolver", "type": "address"},
+                       {"name": "revocable", "type": "bool"},
+                       {"name": "schema", "type": "string"}], "name": "", "type": "tuple"}],
+                   "stateMutability": "view", "type": "function"}]
+    sr_abi_reg = [{"inputs": [{"name": "schema", "type": "string"},
+                              {"name": "resolver", "type": "address"},
+                              {"name": "revocable", "type": "bool"}],
+                   "name": "register", "outputs": [{"name": "", "type": "bytes32"}],
+                   "stateMutability": "nonpayable", "type": "function"}]
+    sr_addr = Web3.to_checksum_address(SCHEMA_REGISTRY)
+    sr_view = w3.eth.contract(address=sr_addr, abi=sr_abi_get)
+    rec = sr_view.functions.getSchema(bytes.fromhex(schema_uid[2:])).call()
+    # rec = (uid, resolver, revocable, schema) — uid is 0x00..00 if unregistered
+    if int.from_bytes(rec[0], "big") == 0:
+        sr_write = w3.eth.contract(address=sr_addr, abi=sr_abi_reg)
+        reg_tx = sr_write.functions.register(USERNAME_SCHEMA, Web3.to_checksum_address(ZERO_RESOLVER), True).build_transaction({
+            "from": Web3.to_checksum_address(acct.address),
+            "nonce": w3.eth.get_transaction_count(Web3.to_checksum_address(acct.address)),
+            "value": 0,
+        })
+        reg_signed = w3.eth.account.sign_transaction(reg_tx, acct.private_key)
+        reg_raw = getattr(reg_signed, "raw_transaction", None) or getattr(reg_signed, "rawTransaction")
+        reg_hash = w3.eth.send_raw_transaction(reg_raw)
+        reg_receipt = w3.eth.wait_for_transaction_receipt(reg_hash, timeout=gas_timeout)
+        if reg_receipt.get("status") != 1:
+            raise UsernameEASError(f"schema register tx reverted: {reg_hash.hex()}")
+        # post-condition: schema now resolvable
+        rec2 = sr_view.functions.getSchema(bytes.fromhex(schema_uid[2:])).call()
+        if int.from_bytes(rec2[0], "big") == 0:
+            raise UsernameEASError(
+                f"schema register tx succeeded but getSchema still empty (uid mismatch?). "
+                f"tx={reg_hash.hex()}"
+            )
+
     eas = w3.eth.contract(address=Web3.to_checksum_address(EAS_CONTRACT), abi=_EAS_ATTEST_ABI)
     request = (
         bytes.fromhex(schema_uid[2:]),
