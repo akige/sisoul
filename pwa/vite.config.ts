@@ -1,9 +1,12 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 
-// base 路径适配 GitHub Pages 部署 akige.github.io/sisoul/ (项目页).
-// 本地 dev / preview / vitest 不需要 base, 用 VITE_BASE='/' override.
-const BASE = process.env.VITE_BASE ?? "/sisoul/";
+// base="./" 让 HTML asset 引用走相对路径, 同一 build 既能:
+//   - 在 GitHub Pages 部署 akige.github.io/sisoul/  → ./assets/... 解析正确
+//   - 在 daemon serve http://127.0.0.1:9876/app/    → ./assets/... 解析正确
+// Router base 在运行时从 window.location.pathname 自动 detect (见 App.tsx).
+// dev (vite serve) 用 VITE_BASE='/' override.
+const BASE = process.env.VITE_BASE ?? "./";
 
 export default defineConfig({
   base: BASE,

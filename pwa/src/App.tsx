@@ -84,9 +84,18 @@ function Layout(props: { children?: any }) {
   );
 }
 
-// GitHub Pages 部署在 /sisoul/ 子路径, SolidJS Router 需要知道 base
-// 否则 location.pathname="/sisoul/" 无法 match path="/" → 黑屏
-const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+// vite base="./" 时 BASE_URL 不可靠, 改运行时 detect.
+// 同一 build artifact 部署到 /sisoul/ (GH Pages) / /app/ (daemon) / / (dev)
+// 都正确. 取 location.pathname 的第一个 segment 作 Router base.
+function detectRouterBase(): string {
+  if (typeof window === "undefined") return "";
+  const segs = window.location.pathname.split("/").filter(Boolean);
+  // /sisoul/ → ["sisoul"]      → "/sisoul"
+  // /app/borrow → ["app","borrow"] → "/app"
+  // / → []                     → ""
+  return segs.length > 0 ? "/" + segs[0] : "";
+}
+const ROUTER_BASE = detectRouterBase();
 
 export default function App() {
   return (
