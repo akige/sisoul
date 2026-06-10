@@ -241,12 +241,21 @@ export type BorrowStage =
   | "error";
 
 export interface BorrowRunResponse {
-  request_id: string;
+  request_id?: string;
   session_id?: string;
-  stage: BorrowStage;
+  stage?: BorrowStage;
   proxy_endpoint?: string;
   approved_at?: string;
   error?: string;
+  // daemon /sisoul/borrow/run alias 真返 {session: {session_id, status,
+  // lend_request_id, error, ...}}. PWA submit handler 兜底两种 shape。
+  session?: {
+    session_id?: string;
+    lend_request_id?: string;
+    status?: string;
+    error?: string | null;
+    [k: string]: unknown;
+  };
 }
 
 export function borrowRun(body: BorrowRunRequest): Promise<BorrowRunResponse> {

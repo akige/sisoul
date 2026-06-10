@@ -153,15 +153,42 @@ function BorrowForm(props: {
         emergency_flag: emergency(),
         reason: reason() || undefined,
       });
+      // daemon /borrow/run 真返 {session: {session_id, status,
+      // lend_request_id, error, ...}}, 不是 {request_id, stage}. 兜底两种 shape
+      // 避免 BorrowProgress 渲染 `.slice(0,12)` TypeError on undefined.
+      const sess: any =
+        (resp as any).session ?? (resp as any);
+      const status: string | undefined =
+        sess.status ?? (resp as any).stage;
+      let stage: BorrowStage = "queued";
+      if (status === "completed" || status === "active") {
+        stage = "completed";
+      } else if (
+        status === "lender-timeout" ||
+        status === "denied" ||
+        status === "rejected"
+      ) {
+        stage = "denied";
+      } else if (status === "error" || status === "failed") {
+        stage = "error";
+      } else if (typeof status === "string" && status in STAGE_LABEL) {
+        stage = status as BorrowStage;
+      }
+      const reqId: string =
+        sess.session_id ??
+        sess.lend_request_id ??
+        sess.request_id ??
+        (resp as any).request_id ??
+        `bs_${Date.now()}`;
       props.onSubmitted({
-        request_id: resp.request_id,
+        request_id: reqId,
         friend_did: friendDid(),
         friend_handle: friend?.handle,
         provider: provider(),
         model: model(),
         token_count: tokenCount(),
-        stage: resp.stage,
-        error: resp.error,
+        stage,
+        error: sess.error ?? (resp as any).error ?? undefined,
         started_at: new Date().toISOString(),
       });
     } catch (ex) {
