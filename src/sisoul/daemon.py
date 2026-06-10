@@ -532,7 +532,16 @@ def create_app() -> FastAPI:
             # router 处理. PWA SPA 标准做法.
             _pwa_index = _pwa_root / "index.html"
 
+            from fastapi.responses import RedirectResponse
+
             @app.get("/app", include_in_schema=False)
+            async def _pwa_redirect_trailing_slash():
+                # 关键: 不能两个 path 都返 index — 浏览器 base URL=/app 时
+                # 相对路径 ./assets/... 解析为 /assets/... (daemon 404 → 白屏).
+                # 308 (permanent + 保持 method) 让浏览器跳 /app/, base URL
+                # 变 /app/, 相对路径才正确解析为 /app/assets/...
+                return RedirectResponse(url="/app/", status_code=308)
+
             @app.get("/app/", include_in_schema=False)
             async def _pwa_index_route():
                 return FileResponse(_pwa_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
