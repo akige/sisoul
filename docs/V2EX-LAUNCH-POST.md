@@ -48,9 +48,11 @@ sisoul chat recv                                        # 收消息
 - ✅ **链上 mainnet attestation** — Optimism mainnet EAS 真注册. 第一个 username `@akige` 已上链 ([tx 0xabcb1bab...](https://optimistic.etherscan.io/tx/0xabcb1bab93946d491503a6e1368ee8c6b870085e185eed83f629459d865bb72c) · [easscan attestation](https://optimism.easscan.org/attestation/view/0x78375e7ed6cbec575f630be8e32377da91de4801e6f9799bfb16a7c71ca6acdb)). 任何人 `sisoul username resolve akige` 立刻通过 easscan GraphQL 拿到 did:key, 整链路 0 中心化 server. 你的 username 注册 = 你自己签 + 你自己付 ~$0.5-1 OP ETH gas, sisoul 完全不沾钱也不沾权.
 - ✅ **USDT 自动到账确认** — alpha v1.1 已 ship. `sisoul lend auto-approve enable` 后, 借出方 daemon 每 30s 轮询 TronGrid, USDT 到账自动 approve + GossipSub 发 ACK 给借入方. 借出方 0 手工干预.
 - ✅ **A3 借用走 GossipSub** — 借用请求不再走 Waku push, 改走 IPFS kubo GossipSub per-DID topic (`/sisoul/lend/v1/<sha256(did):16>`). 完全去中心化, aws/cloud 主机 host_policy 物理拒跑 GossipSub.
-- ✅ **install.sh 一行装** — `curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash` 真测过, 自动探测 OS + Python + kubo + 写 wrapper + PATH. mac 还可 `brew install --formula https://.../Formula/sisoul.rb`.
+- ✅ **install.sh 一行装** — `curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash` 真测过, 自动探测 OS + Python + kubo + 写 wrapper + PATH. mac 还可 `brew install --formula https://raw.githubusercontent.com/akige/sisoul/main/Formula/sisoul.rb`.
 - ✅ **macOS 菜单栏 native app** — `tools/menubar/` 已 ship. `cd tools/menubar && bash build_app.sh` 真打出 29MB `Sisoul.app` (rumps + py2app), Finder 双击就跑. menu bar 显示 `S•` (online) / `S` (offline) + 15 个菜单项 (Add friend / Ask founder / Borrow LLM / Start-Stop daemon / Open dashboard ...). 真测过 `Add friend...` 弹 native dialog 真发 subprocess 调 sisoul CLI, EAS Optimism resolve 真打到 mainnet GraphQL.
 - ✅ **PWA dashboard 上线** — [akige.github.io/sisoul/](https://akige.github.io/sisoul/) 浏览器打开就看. daemon offline 时显示 5 步装机命令 (带复制按钮) + 3 核心场景卡片 + GitHub/INSTALL 底链; daemon online 切到 Vault/Friends/Lend/Borrow/Chat 全功能 UI.
+- ✅ **PWA 上借 LLM 全程真路径 (2026-06-10)** — Borrow 页选朋友 → 发起 → prompt 用 libsodium Box (X25519, 密钥就是 did:key 本体) 加密 → GossipSub 送到借出方 daemon → 借出方内存解密调**自己的** LLM endpoint (`OPENAI_API_BASE`/`OPENAI_API_KEY` 自己配) → 加密回传 → 你页面上看到真回复. 借出方全程看不到你的 prompt 明文 (不落盘不进 log, 代码可审).
+- ✅ **per-request 真审批 (2026-06-10)** — Borrow 页选"等对方批准": 对方 Lend 页**实时弹出**你的请求卡片 (SSE 推送, 不用刷新), 点 Approve 你这边立刻拿到回复, 点 Deny 你立刻看到拒绝理由. 也有"自动批准 (强关系预授权)"模式跳过审批.
 - ❌ **iOS / Android native app** — Skeleton 在 `mobile/{ios,android}/` (Swift Package + Kotlin Gradle), 单元测试通过但**没用户能下载的 .ipa / .apk**. Roadmap T+1m~T+2m.
 
 ## 3 个核心场景
@@ -118,6 +120,7 @@ reputation grade A/B/C/D 是信号层 (上链 EAS), 不阻断借 — 你可以�
 - 治理 + 永不发币论证: [docs/GOVERNANCE.md](https://github.com/akige/sisoul/blob/main/docs/GOVERNANCE.md)
 - 白皮书 §4.10: [docs/whitepaper/sisoul-v1.0-whitepaper.md](https://github.com/akige/sisoul/blob/main/docs/whitepaper/sisoul-v1.0-whitepaper.md)
 - founder agent 安全审计 (能不能控制你电脑): [docs/FOUNDER-SECURITY.md](https://github.com/akige/sisoul/blob/main/docs/FOUNDER-SECURITY.md)
+- 排错手册 (白屏/borrow 没反应/装机问题): [docs/TROUBLESHOOTING.md](https://github.com/akige/sisoul/blob/main/docs/TROUBLESHOOTING.md)
 - 讨论: https://github.com/akige/sisoul/discussions
 
 求轻喷求测试. bug → Issues. 想骂 → Discussions.
