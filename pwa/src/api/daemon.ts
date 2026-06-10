@@ -97,7 +97,18 @@ export interface ChatSession {
 }
 
 export function listChatHistory(): Promise<{ sessions: ChatSession[] }> {
-  return daemonFetch("/chat-history/list");
+  // daemon 真返 array (类似 goals/preferences), PWA 期望 {sessions: []}
+  return daemonFetch<any>("/chat-history/list").then((d) => {
+    const arr: any[] = Array.isArray(d) ? d : Array.isArray(d?.sessions) ? d.sessions : [];
+    return {
+      sessions: arr.map((r) => ({
+        id: r.id ?? r.session_id ?? "",
+        title: r.title ?? "(untitled)",
+        started_at: r.started_at ?? r.created_at ?? r.updated ?? "",
+        message_count: r.message_count ?? r.messages?.length ?? 0,
+      })),
+    };
+  });
 }
 
 // ── Identity / Settings ────────────────────────────────────────────────────
@@ -109,7 +120,23 @@ export interface IdentityInfo {
 }
 
 export function getIdentity(): Promise<IdentityInfo> {
-  return daemonFetch("/identity");
+  // daemon /identity 真返 {has_seed, seed_path, master_key_fingerprint, ...}
+  // 不含 did. PWA Settings.tsx access id().did → undefined → .length crash.
+  // 兜底: 先调 /identity 拿 seed info, 同步调 /did 拿 default did, 合并.
+  return Promise.all([
+    daemonFetch<any>("/identity").catch(() => ({})),
+    daemonFetch<any>("/did").catch(() => ({})),
+  ]).then(([identityResp, didResp]) => {
+    const def = didResp?.default || didResp || {};
+    return {
+      did: def.did ?? identityResp?.master_key_fingerprint ?? "did:key:unknown",
+      handle: def.handle ?? identityResp?.handle ?? undefined,
+      mnemonic_hint: identityResp?.seed_path
+        ? `seed @ ${identityResp.seed_path} (${identityResp.seed_word_count || 12} 词)`
+        : undefined,
+      provider: def.network ?? identityResp?.provider ?? undefined,
+    };
+  });
 }
 
 // ── Attestation / Advanced ─────────────────────────────────────────────────
@@ -121,7 +148,20 @@ export interface AttestEntry {
 }
 
 export function getAttestHistory(): Promise<{ history: AttestEntry[] }> {
-  return daemonFetch("/attest/history");
+  // daemon 真返 {source, items: [...]} — PWA 期望 {history: [...]}
+  return daemonFetch<any>("/attest/history").then((d) => {
+    const arr: any[] = Array.isArray(d?.items) ? d.items
+      : Array.isArray(d?.history) ? d.history
+      : Array.isArray(d) ? d : [];
+    return {
+      history: arr.map((r) => ({
+        uid: r.uid ?? r.batch_uid ?? r.tx_hash ?? "",
+        schema: r.schema ?? r.method ?? r.network ?? "",
+        timestamp: r.timestamp ?? (r.confirmed_at ? Date.parse(r.confirmed_at)/1000 : 0),
+        chain: r.chain ?? r.network ?? "",
+      })),
+    };
+  });
 }
 
 // ── Friends ────────────────────────────────────────────────────────────────
