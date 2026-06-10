@@ -61,6 +61,7 @@ export default function Sidebar() {
               inactiveClass="text-sisoul-muted hover:text-sisoul-text hover:bg-sisoul-border/30"
               class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-mono transition-colors"
               end={item.path === "/"}
+              title={item.label}
             >
               <span class="text-base shrink-0">{item.icon}</span>
               {!collapsed() && <span>{item.label}</span>}

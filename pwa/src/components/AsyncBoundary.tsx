@@ -22,6 +22,18 @@ export default function AsyncBoundary(props: Props) {
             >
               重试
             </button>
+            <a
+              class="text-sisoul-muted underline ml-3"
+              href={`https://github.com/akige/sisoul/issues/new?title=${encodeURIComponent(
+                "[PWA] 加载失败: " + String(err).slice(0, 80)
+              )}&body=${encodeURIComponent(
+                "错误信息:\n```\n" + String(err) + "\n```\n\n复现路径: (填写你点了什么)"
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              报告 issue →
+            </a>
           </div>
         )
       }

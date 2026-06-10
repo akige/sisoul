@@ -340,3 +340,31 @@ aws-us-bare main: 07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
 ---
 
 **handoff doc 终.**
+
+---
+
+## 十三、Addendum 2026-06-10 (接手会话 · P0 完成)
+
+**P0 LLM forward 已真打通** (commit `11b25f93` + `4a84318c`, 双 remote sync):
+
+| 原 limitation | 现状 |
+|---|---|
+| borrow 返 stub-passthrough | ✅ **已修**: 新 `friend/proxy_p2p.py` GossipSub 加密往返 (Box X25519 did:key), Bob daemon 真调自己的 LLM endpoint (`OPENAI_API_BASE`). e2e 真证据: UI 卡片显示 "Hi from Bob's mock LLM!". lender 离线时优雅降级 stub (文本明示原因) |
+| force_mode=strong-tie-auto | 🟡 部分: proxy 真等 Bob 响应 + Bob 真调 LLM, 但审批仍 strong-tie-auto 自动 (per-request 在 lender 端返明确 denied). P1 不变 |
+| trust_level 默认 2 | ⏳ P2 不变 |
+| SSE heartbeat stub | ⏳ P2 不变 |
+| sidebar 折叠无 tooltip | ✅ 已加 title tooltip (默认本来就是展开, 原表述过时) |
+| 错误盒只有"重试" | ✅ AsyncBoundary 默认 fallback 加 "报告 issue →" (GitHub Issues 预填 title/body) |
+| /skills 默认空 tab | ✅ 核实默认已是 `owned` (原表述过时, 无需改) |
+
+**新发现 + 修掉的 bug** (本次接手会话):
+1. `borrow._proxy_call` import 的 `proxy_chat_request` 模块函数从未存在 → borrow 永远 stub (P0 根因)
+2. `/borrow/run` alias 在 event loop 里同步跑 `_post_borrow` → 改 `to_thread`
+3. `OpenAIAdapter` 不读 `OPENAI_API_BASE` env → Bob 的 mock 指向不生效
+4. `_normalize_did` 把 `did:key:…` 包成 `did:sisoul:did:key:…` 写库 → PWA UI borrow 必 proxy-failed (写侧修 + 读侧 3 处解残留)
+5. Borrow.tsx 丢弃 `proxy_text` → 用户永远看不到借来的 LLM 回复
+6. 5 个环境依赖测试假失败 (有真 vault/daemon 的机器必炸) → 密闭化
+
+**验收**: pytest 2372 pass 0 fail · vitest 177 pass · PWA audit 14/14 0 error · playwright UI e2e 真见 mock LLM 回复.
+
+**V2EX gate (§十二-8)**: P0 已达成, 发文不再有"截图 stub"反弹风险. 下一批次 = P1 per-request (3-5 天) 或直接走 P2 发文流程.
