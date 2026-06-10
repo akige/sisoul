@@ -198,6 +198,76 @@ def create_app() -> FastAPI:
         # _post_borrow 是同步函数 (返 _BorrowResponseBody), 不能 await
         return _post_borrow(translated)
 
+    @app.post("/sisoul/friend/add", include_in_schema=False)
+    async def _alias_friend_add(body: dict):
+        """PWA alias → /sisoul/friend/request.
+
+        PWA addFriend({did, handle?, trust_level?}) 期望 AddFriendResponse
+        {did, handle, trust_level, added_at, verified}.
+
+        daemon /sisoul/friend/request 真 endpoint 收 {target_did, message, ...}
+        返 {request_id, requester_did, target_did, direction, message,
+            created_at, attestation_uid, status}.
+
+        映射:
+        - PWA did       → daemon target_did
+        - PWA handle    → daemon message ("add via handle=<h>, trust=<tl>")
+        - daemon created_at → PWA added_at
+        - verified      = True (FriendRequest 入 EAS queue 成功就视为)
+        - trust_level   = body.trust_level or 1 (本地 cache 不存 trust_level,
+                          PWA 用作 badge 显示, daemon 端默认 L1 Read)
+        """
+        from fastapi.responses import JSONResponse
+        target_did = (body.get("did") or body.get("target_did") or "").strip()
+        if not target_did:
+            return JSONResponse(
+                status_code=400, content={"detail": "did required"}
+            )
+        handle = body.get("handle") or ""
+        trust_level = int(body.get("trust_level") or 1)
+        message = body.get("message") or (
+            f"add via PWA: handle={handle} trust=L{trust_level}"
+            if handle else f"add via PWA trust=L{trust_level}"
+        )
+        try:
+            from sisoul.daemon_routes.friend import _rel as _friend_rel
+            from sisoul.friend.relationship import (
+                FriendError, FriendRequestError,
+            )
+        except Exception as _ie:  # noqa: BLE001
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"friend module import 失败: {_ie}"},
+            )
+        try:
+            rel = _friend_rel(None, None, None, None)
+        except Exception as _re:  # noqa: BLE001
+            return JSONResponse(
+                status_code=400,
+                content={"detail": f"resolve own did 失败: {_re}"},
+            )
+        try:
+            req = rel.send_friend_request(target_did, message=message)
+        except (FriendError, FriendRequestError) as _e:  # noqa: BLE001
+            return JSONResponse(
+                status_code=400, content={"detail": str(_e)}
+            )
+        if not handle:
+            if target_did.startswith("did:sisoul:"):
+                handle = target_did[len("did:sisoul:"):]
+            elif target_did.startswith("did:key:"):
+                handle = target_did[8:16]
+            else:
+                handle = target_did[:8]
+        return {
+            "did": target_did,
+            "handle": handle,
+            "trust_level": trust_level,
+            "added_at": req.created_at,
+            "verified": True,
+            "request_id": req.request_id,
+        }
+
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
         """PWA Friends.tsx 用 EventSource (SSE GET) 监听 friend.online /
