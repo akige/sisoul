@@ -298,25 +298,46 @@ def create_app() -> FastAPI:
             import sys as _sys
             print(f"[friend/list alias] friends.db read failed: {_re}",
                   file=_sys.stderr)
-        # didkey_friends.json (alpha 旧 install 兼容)
+        # didkey_friends.json (alpha 旧 install 兼容, 真路径 = identity/didkey_friends.json)
+        # 真 schema: [{did, pubkey_hex, key_type, nickname, added_at, method, ...}]
+        # rename → PWA Friend shape (did, handle, trust_level, connected_at, ...)
         try:
             from pathlib import Path as _PP
             import json as _json
             import os as _os
             _vault = _PP(_os.environ.get(
                 "SISOUL_VAULT", str(_PP.home() / ".sisoul"))).expanduser()
-            _didkey_file = _vault / "didkey_friends.json"
-            if _didkey_file.exists():
+            _candidates = [
+                _vault / "identity" / "didkey_friends.json",
+                _vault / "didkey_friends.json",  # legacy
+            ]
+            _didkey_file = next((p for p in _candidates if p.exists()), None)
+            if _didkey_file is not None:
                 extras = _json.loads(_didkey_file.read_text("utf-8"))
                 seen = {x.get("did") for x in out}
-                for e in extras if isinstance(extras, list) else []:
-                    if e.get("did") and e["did"] not in seen:
-                        e.setdefault("trust_level", 2)
-                        e.setdefault("connected_at",
-                                     e.get("created_at") or "")
-                        out.append(e)
-        except Exception:
-            pass
+                if isinstance(extras, list):
+                    for e in extras:
+                        did = e.get("did")
+                        if not did or did in seen:
+                            continue
+                        added_at = e.get("added_at") or e.get("created_at") or ""
+                        out.append({
+                            "did": did,
+                            "handle": e.get("handle") or e.get("nickname") or "",
+                            "status": e.get("status") or "active",
+                            "strong_tie_score": float(e.get("strong_tie_score") or 0.5),
+                            "trust_level": int(e.get("trust_level") or 2),
+                            "created_at": added_at,
+                            "connected_at": added_at,
+                            "became_active_at": e.get("became_active_at") or added_at,
+                            "last_interaction": e.get("last_interaction"),
+                            "interaction_count": int(e.get("interaction_count") or 0),
+                            "notes": e.get("notes") or "did:key 朋友",
+                        })
+        except Exception as _e:  # noqa: BLE001
+            import sys as _sys
+            print(f"[friend/list alias] didkey merge failed: {_e}",
+                  file=_sys.stderr)
         return out
 
     @app.get("/sisoul/notify/stream", include_in_schema=False)
