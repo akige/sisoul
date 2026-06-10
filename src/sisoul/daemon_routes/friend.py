@@ -629,12 +629,67 @@ def _post_lend_request(body: _LendRequestBody) -> dict[str, _Any]:
         raise HTTPException(500, f"lend request 失败: {e}") from e
 
 
+def _publish_lend_decision(req: _Any, decision: str, reason: str | None = None) -> None:
+    """P1 2026-06-10: 批/拒后回发 GossipSub ack 给借入方 + 推本机 SSE.
+
+    借入方 daemon 的 ack loop 收到后落地它本地 LendStore, 解锁 per-request
+    borrow 轮询. request_id 用借入方原始 id (ingest 时存进 note json 的
+    lend_request_id), 本机 id 只是 fallback.
+
+    Never raises (决策已落库, 推送失败不回滚).
+    """
+    import asyncio as _aio
+    import json as _json
+    import sys as _sys
+
+    remote_rid = req.id
+    try:
+        note = _json.loads(req.note or "{}")
+        remote_rid = note.get("lend_request_id") or req.id
+    except Exception:  # noqa: BLE001
+        pass
+
+    # SSE (本机 PWA Lend 页刷新)
+    try:
+        from sisoul.daemon_events import publish as _ev_publish
+        _ev_publish("lend.update", {
+            "request_id": req.id,
+            "decision": decision,
+            "borrower_did": req.borrower_did,
+            "reason": reason,
+        })
+    except Exception:  # noqa: BLE001
+        pass
+
+    # GossipSub ack → 借入方 (threadpool 线程: 自建 transport + asyncio.run)
+    try:
+        from sisoul.chat.transport import KuboGossipSubTransport
+        from sisoul.friend.lend_gossipsub import publish_lend_ack
+
+        async def _send() -> None:
+            transport = KuboGossipSubTransport()
+            await publish_lend_ack(
+                transport,
+                lender_did=req.lender_did,
+                borrower_did=req.borrower_did,
+                request_id=remote_rid,
+                decision=decision,
+                reason=reason,
+            )
+
+        _aio.run(_send())
+    except Exception as e:  # noqa: BLE001
+        print(f"[lend/{decision}] gossipsub ack publish failed: {type(e).__name__}: {e}",
+              file=_sys.stderr)
+
+
 @friend_router.post("/sisoul/lend/approve")
 def _post_lend_approve(body: _LendApproveBody) -> dict[str, _Any]:
     try:
         req = __approve_lend(
             body.request_id, db_path=body.lend_db, pending_file=body.pending_file
         )
+        _publish_lend_decision(req, "approved")
         return {"request": req.to_dict()}
     except _RequestNotFoundError as e:
         raise HTTPException(404, str(e)) from e
@@ -653,6 +708,7 @@ def _post_lend_deny(body: _LendDenyBody) -> dict[str, _Any]:
             db_path=body.lend_db,
             pending_file=body.pending_file,
         )
+        _publish_lend_decision(req, "denied", reason=body.reason)
         return {"request": req.to_dict()}
     except _RequestNotFoundError as e:
         raise HTTPException(404, str(e)) from e

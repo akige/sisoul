@@ -105,6 +105,7 @@ def borrower_roundtrip(
     *,
     provider: str = "openai",
     mode: str = "strong-tie-auto",
+    lend_request_id: Optional[str] = None,
     timeout: float = DEFAULT_ROUNDTRIP_TIMEOUT,
     kubo_api: str = "http://127.0.0.1:5001",
 ) -> dict[str, Any]:
@@ -135,6 +136,7 @@ def borrower_roundtrip(
         "model": model,
         "provider": provider,
         "mode": mode,
+        "lend_request_id": lend_request_id,
         "encrypted_prompt_b64": sealed_prompt,
         "issued_at": int(time.time()),
     }
@@ -263,6 +265,34 @@ async def lender_serve_loop(transport: Any, my_did: str) -> None:
             await asyncio.sleep(10)
 
 
+def _lend_approved_locally(borrower_did: str, remote_request_id: str) -> bool:
+    """Lender 端复核: 本机 LendStore 里该 borrower 的请求是否已 approved.
+
+    匹配键 = ingest 时存进 note json 的 lend_request_id (借入方原始 id).
+    approved / completed 都算放行 (completed = 已批且已记账的复用).
+    """
+    if not remote_request_id:
+        return False
+    try:
+        import json as _json
+        from sisoul.friend.lend import LendStore
+
+        with LendStore() as store:
+            for req in store.list_all(limit=500):
+                if req.borrower_did != borrower_did:
+                    continue
+                try:
+                    note = _json.loads(req.note or "{}")
+                except Exception:  # noqa: BLE001
+                    continue
+                if note.get("lend_request_id") != remote_request_id:
+                    continue
+                return req.status in ("approved", "completed")
+    except Exception as e:  # noqa: BLE001
+        print(f"[daemon] lend approval lookup failed: {type(e).__name__}: {e}", file=sys.stderr)
+    return False
+
+
 async def _serve_one(transport: Any, proxy: Any, body: dict) -> None:
     from sisoul.chat.transport import WireEnvelope
 
@@ -270,9 +300,21 @@ async def _serve_one(transport: Any, proxy: Any, body: dict) -> None:
     borrower_did = str(body.get("borrower_did", ""))
     resp: dict[str, Any] = {"request_id": request_id, "lender_did": proxy.self_did}
 
-    # alpha gate: only strong-tie-auto auto-serves; per-request approval is P1
-    if body.get("mode") != "strong-tie-auto":
-        resp.update(status="denied", reason="per-request approval not implemented (P1); only strong-tie-auto served")
+    # serve gate:
+    # - strong-tie-auto → 直接服务 (强关系预授权)
+    # - per-request → 查本机 LendStore: 该 borrower 的对应请求已被本机用户
+    #   approve 才服务 (P1 真审批; 借入方只在收到 approved ack 后才会发 proxy
+    #   请求, 这里是 lender 端的不信任复核)
+    mode = str(body.get("mode", ""))
+    if mode == "per-request":
+        if not _lend_approved_locally(
+            borrower_did, str(body.get("lend_request_id") or "")
+        ):
+            resp.update(status="denied", reason="lend request not approved by lender")
+            await _publish_resp(transport, borrower_did, resp)
+            return
+    elif mode != "strong-tie-auto":
+        resp.update(status="denied", reason=f"mode {mode!r} not served (use strong-tie-auto or per-request)")
         await _publish_resp(transport, borrower_did, resp)
         return
 

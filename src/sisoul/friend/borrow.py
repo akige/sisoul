@@ -71,35 +71,51 @@ def _safe_notify(friend_did: str, kind: str, payload: dict) -> None:
             transport = get_default_transport()
         except Exception:
             transport = None
-        if transport is not None:
-            async def _publish() -> None:
-                try:
-                    if kind == "borrow_request":
-                        await publish_lend_request(
-                            transport,
-                            borrower_did=payload.get("borrower_did", ""),
-                            lender_did=friend_did,
-                            request_body=payload,
-                        )
-                    elif kind in ("lend_response", "lend_ack"):
-                        await publish_lend_ack(
-                            transport,
-                            lender_did=payload.get("lender_did", "") or "",
-                            borrower_did=friend_did,
-                            request_id=payload.get("lend_request_id", ""),
-                            decision=str(payload.get("status", "approved")),
-                            reason=payload.get("reason"),
-                        )
-                except Exception:
-                    pass
+        async def _publish(t) -> None:
             try:
-                loop = _aio.get_running_loop()
-                loop.create_task(_publish())
-            except RuntimeError:
+                if kind == "borrow_request":
+                    await publish_lend_request(
+                        t,
+                        borrower_did=payload.get("borrower_did", ""),
+                        lender_did=friend_did,
+                        request_body=payload,
+                    )
+                elif kind in ("lend_response", "lend_ack"):
+                    await publish_lend_ack(
+                        t,
+                        lender_did=payload.get("lender_did", "") or "",
+                        borrower_did=friend_did,
+                        request_id=payload.get("lend_request_id", ""),
+                        decision=str(payload.get("status", "approved")),
+                        reason=payload.get("reason"),
+                    )
+            except Exception:
+                pass
+
+        try:
+            loop = _aio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None and transport is not None:
+            loop.create_task(_publish(transport))
+        else:
+            # 无 running loop (daemon threadpool / CLI): 不能跨 loop 复用 daemon
+            # 的 transport (httpx AsyncClient 绑死创建时的 loop, 跨 loop 用会
+            # 静默丢消息). 起独立 transport 一次性发完即关.
+            async def _publish_fresh() -> None:
+                from sisoul.chat.transport import KuboGossipSubTransport
+                t = KuboGossipSubTransport()
                 try:
-                    _aio.run(_publish())
-                except Exception:
-                    pass
+                    await _publish(t)
+                finally:
+                    try:
+                        await t.close()
+                    except Exception:
+                        pass
+            try:
+                _aio.run(_publish_fresh())
+            except Exception:
+                pass
     except Exception:  # noqa: BLE001
         pass
     # 2. Waku fallback (only fires if push module is loaded).
@@ -326,6 +342,8 @@ def _proxy_call(
     amount: int,
     model: str,
     prompt: str,
+    mode: str = "strong-tie-auto",
+    lend_request_id: Optional[str] = None,
 ) -> ProxyResult:
     # 1. 优先 injected mock (test only)
     if _INJECTED_MOCK is not None:
@@ -365,6 +383,8 @@ def _proxy_call(
             model=model,
             prompt=prompt,
             amount=amount,
+            mode=mode,
+            lend_request_id=lend_request_id,
         )
     except Exception as e:
         # P2P 层失败 (lender 离线 / kubo 没起 / vault 不匹配) → 优雅降级 stub,
@@ -682,6 +702,8 @@ def borrow_resource(
                 amount=amount,
                 model=model,
                 prompt=prompt,
+                mode=session.mode,
+                lend_request_id=req.id,
             )
         except ProxyError as e:
             session.status = "proxy-failed"

@@ -237,6 +237,8 @@ export interface BorrowRunRequest {
   token_count: number;
   emergency_flag?: boolean;
   reason?: string;
+  /** strong-tie-auto (默认, 强关系预授权) | per-request (真等对方在 Lend 页批准) */
+  mode?: "strong-tie-auto" | "per-request";
 }
 
 export type BorrowStage =

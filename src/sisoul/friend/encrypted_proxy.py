@@ -683,6 +683,8 @@ def proxy_chat_request(
     amount: int = 0,
     provider: str = "openai",
     timeout: Optional[float] = None,
+    mode: str = "strong-tie-auto",
+    lend_request_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Borrow 真路径 (Alice 端): 加密 prompt → GossipSub → lender → 解密 response.
 
@@ -705,6 +707,8 @@ def proxy_chat_request(
         prompt=prompt,
         provider=provider,
         timeout=timeout or DEFAULT_ROUNDTRIP_TIMEOUT,
+        mode=mode,
+        lend_request_id=lend_request_id,
     )
     return {
         "text": r["text"],

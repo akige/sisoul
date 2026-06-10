@@ -22,7 +22,10 @@ const Stats = lazy(() => import("./routes/Stats"));
 const Cheatsheet = lazy(() => import("./routes/Cheatsheet"));
 const V3RSI = lazy(() => import("./routes/V3RSI"));
 
-const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE || "http://127.0.0.1:9876";
+const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE ||
+  (typeof window !== "undefined" && window.location.pathname.startsWith("/app")
+    ? window.location.origin // daemon 托管 (任意端口) → 同源
+    : "http://127.0.0.1:9876");
 
 // 根路由 daemon 检测 — offline 显示 OnboardingScreen, online 显示 Vault
 // 与 TopBar.tsx 的 health() 检测独立, 但用同 /sisoul/health endpoint

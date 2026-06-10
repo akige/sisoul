@@ -122,6 +122,9 @@ function BorrowForm(props: {
   const [model, setModel] = createSignal("claude-sonnet-4-6");
   const [tokenCount, setTokenCount] = createSignal(2000);
   const [emergency, setEmergency] = createSignal(false);
+  const [mode, setMode] = createSignal<"strong-tie-auto" | "per-request">(
+    "strong-tie-auto"
+  );
   const [reason, setReason] = createSignal("");
   const [submitting, setSubmitting] = createSignal(false);
   const [err, setErr] = createSignal<string | null>(null);
@@ -155,6 +158,7 @@ function BorrowForm(props: {
         token_count: tokenCount(),
         emergency_flag: emergency(),
         reason: reason() || undefined,
+        mode: mode(),
       });
       // daemon /borrow/run 真返 {session: {session_id, status,
       // lend_request_id, error, ...}}, 不是 {request_id, stage}. 兜底两种 shape
@@ -288,6 +292,21 @@ function BorrowForm(props: {
         />
       </label>
 
+      <label class="block space-y-1">
+        <span class="text-xs text-sisoul-muted font-mono">审批模式</span>
+        <select
+          class="w-full px-3 py-2 bg-sisoul-bg border border-sisoul-border rounded font-mono text-sm text-sisoul-text"
+          value={mode()}
+          onChange={(e) =>
+            setMode(e.currentTarget.value as "strong-tie-auto" | "per-request")
+          }
+          data-testid="borrow-mode-select"
+        >
+          <option value="strong-tie-auto">自动批准 (强关系预授权)</option>
+          <option value="per-request">等对方批准 (对方 Lend 页真批, 最长 2 分钟)</option>
+        </select>
+      </label>
+
       <label class="flex items-center gap-2 text-xs text-sisoul-muted">
         <input
           type="checkbox"
@@ -313,7 +332,11 @@ function BorrowForm(props: {
         disabled={submitting() || props.friends.length === 0}
         data-testid="borrow-submit"
       >
-        {submitting() ? "提交中..." : "发起 borrow"}
+        {submitting()
+          ? mode() === "per-request"
+            ? "等待对方批准中… (最长 2 分钟)"
+            : "提交中..."
+          : "发起 borrow"}
       </button>
     </form>
   );

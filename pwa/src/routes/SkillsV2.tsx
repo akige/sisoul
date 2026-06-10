@@ -11,7 +11,10 @@ interface InstallForm {
   author_did: string;
 }
 
-const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE || "http://127.0.0.1:9876";
+const DAEMON_BASE = import.meta.env.VITE_DAEMON_BASE ||
+  (typeof window !== "undefined" && window.location.pathname.startsWith("/app")
+    ? window.location.origin // daemon 托管 (任意端口) → 同源
+    : "http://127.0.0.1:9876");
 
 const EXAMPLE_SKILLS = [
   {

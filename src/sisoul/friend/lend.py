@@ -137,13 +137,17 @@ class LendStore:
     ) -> None:
         # 注: DEFAULT_* 在 import 时 freeze 自 Path.home(); 这里 lazy 重算
         # 以兼容 monkeypatch HOME (test isolation 必需).
-        self.db_path = (
-            Path(db_path) if db_path else (Path.home() / ".sisoul" / "lend.db")
-        )
+        # P1 2026-06-10: 默认路径认 SISOUL_VAULT env — 多 vault 同机 (e.g.
+        # 第二个 daemon 用 SISOUL_VAULT=… 起) 各用各的 lend.db, 不再串库.
+        import os as _os
+        _vault = Path(
+            _os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))
+        ).expanduser()
+        self.db_path = Path(db_path) if db_path else (_vault / "lend.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.pending_file = (
             Path(pending_file) if pending_file
-            else (Path.home() / ".sisoul" / "pending_lends.json")
+            else (_vault / "pending_lends.json")
         )
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row

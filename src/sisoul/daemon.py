@@ -182,8 +182,12 @@ def create_app() -> FastAPI:
         except Exception as _de:  # noqa: BLE001
             import sys as _sys
             print(f"[borrow/run] borrower did derive failed: {_de}", file=_sys.stderr)
-        # translate. force_mode='strong-tie-auto' 让 alpha e2e 不卡 lender-timeout
-        # (Alice 自己 perms 配 Bob 为 strong-tie 即可, 不必等 Bob 真响应).
+        # translate. PWA 可传 mode:
+        # - strong-tie-auto (默认): 强关系预授权, 不等 lender 真批
+        # - per-request: 真等 lender 在 Lend 页批准 (GossipSub ack 解锁), 120s
+        _mode = body.get("mode") or "strong-tie-auto"
+        if _mode not in ("strong-tie-auto", "per-request"):
+            _mode = "strong-tie-auto"
         translated = _BorrowRequestBody(
             borrower_did=borrower_did,
             lender_did=body.get("friend_did", ""),
@@ -192,8 +196,8 @@ def create_app() -> FastAPI:
             model=body.get("model", ""),
             prompt=body.get("reason", "") or f"借 {body.get('token_count',0)} tokens via PWA",
             emergency_flag=bool(body.get("emergency_flag", False)),
-            force_mode="strong-tie-auto",
-            per_request_timeout_sec=10.0,
+            force_mode=_mode,
+            per_request_timeout_sec=120.0 if _mode == "per-request" else 10.0,
         )
         # _post_borrow 是同步阻塞函数 (内部 P2P proxy 往返可达 15s),
         # 走 to_thread 不阻塞 event loop (借出方 serve loop 还要靠这个 loop 跑).
@@ -350,24 +354,29 @@ def create_app() -> FastAPI:
 
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
-        """PWA Friends.tsx 用 EventSource (SSE GET) 监听 friend.online /
-        lend.request 推送. daemon 真有 WS /notify/stream 但 PWA 没接 WS, 这里
-        加 SSE GET 兼容. 真实现先返 30s heartbeat keep-alive, 不阻断 UI."""
+        """PWA 用 EventSource (SSE GET) 监听真事件:
+        lend.request (借入请求到达) / lend.update (批/拒) / borrow.update (ack 回执).
+        30s 无事件发 heartbeat keep-alive."""
         from fastapi.responses import StreamingResponse
         import asyncio as _aio
+        from sisoul import daemon_events as _ev
 
-        async def _heartbeat():
-            # SSE format: "event: heartbeat\ndata: {}\n\n"
-            # 持续 keep-alive, browser EventSource 不报错
+        async def _stream():
+            q = _ev.attach_queue()
             try:
                 while True:
-                    yield b"event: heartbeat\ndata: {}\n\n"
-                    await _aio.sleep(30)
+                    try:
+                        evt = await _aio.wait_for(q.get(), timeout=30)
+                        yield _ev.sse_format(evt)
+                    except _aio.TimeoutError:
+                        yield b"event: heartbeat\ndata: {}\n\n"
             except _aio.CancelledError:
                 return
+            finally:
+                _ev.detach_queue(q)
 
         return StreamingResponse(
-            _heartbeat(),
+            _stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -709,6 +718,10 @@ def create_app() -> FastAPI:
             print("[daemon] no seed — lend loops skipped.", file=sys.stderr)
             return
 
+        # P1 2026-06-10: 让 threadpool 路由 (lend approve/deny) 能 publish SSE 事件
+        from sisoul import daemon_events as _devents
+        _devents.bind_loop(_aio.get_running_loop())
+
         async def _boot_lend() -> None:
             # Wait for kubo to be up before reaching for the pubsub transport
             await _aio.sleep(8)
@@ -735,7 +748,7 @@ def create_app() -> FastAPI:
                                     body = env.body or {}
                                     with LendStore() as store:
                                         try:
-                                            store.request_lend(
+                                            _req = store.request_lend(
                                                 borrower_did=env.sender_did,
                                                 lender_did=my_did,
                                                 resource_type=str(body.get("resource_type", "llm-call")),
@@ -746,6 +759,21 @@ def create_app() -> FastAPI:
                                                 emergency_flag=bool(body.get("emergency_flag", False)),
                                                 note=__import__("json").dumps(body),
                                             )
+                                            # P1: 推 PWA SSE — Lend 页 toast + 刷新 pending.
+                                            # shape 对齐 PWA LendRequestItem (token_count 等).
+                                            from datetime import datetime as _dt, timezone as _tz
+                                            _devents.publish("lend.request", {
+                                                "request_id": _req.id,
+                                                "borrower_did": _req.borrower_did,
+                                                "provider": str(body.get("provider", "")) or "llm",
+                                                "model": _req.model,
+                                                "token_count": _req.amount,
+                                                "reason": str(body.get("reason", "") or ""),
+                                                "emergency_flag": _req.emergency_flag,
+                                                "mode": _req.mode,
+                                                "created_at": _dt.fromtimestamp(_req.created_at, _tz.utc).isoformat(),
+                                                "expires_at": _dt.fromtimestamp(_req.created_at + _req.ttl_sec, _tz.utc).isoformat(),
+                                            })
                                         except Exception as e:  # noqa: BLE001
                                             # de-dup / schema mismatch — ignore
                                             print(f"[daemon] lend ingest skip: {type(e).__name__}: {e}", file=sys.stderr)
@@ -756,6 +784,41 @@ def create_app() -> FastAPI:
                             await _aio.sleep(10)
 
                 _aio.create_task(_ingest_loop())
+
+                # P1 2026-06-10: 借入方 ack 订阅 — lender 批/拒经 GossipSub 回来,
+                # 落地到本地 LendStore, borrow_resource 的 per-request 轮询才能解锁.
+                async def _ack_loop() -> None:
+                    from sisoul.friend.lend_gossipsub import subscribe_lend_acks
+                    from sisoul.friend.lend import RequestStateError, RequestNotFoundError
+                    while True:
+                        try:
+                            async for ack in subscribe_lend_acks(transport, my_did):
+                                body = ack.body or {}
+                                rid = str(body.get("request_id", ""))
+                                decision = str(body.get("decision", ""))
+                                if not rid:
+                                    continue
+                                try:
+                                    with LendStore() as store:
+                                        if decision == "approved":
+                                            store.approve_lend(rid)
+                                        elif decision in ("denied", "expired"):
+                                            store.deny_lend(rid, reason=body.get("reason"))
+                                except (RequestStateError, RequestNotFoundError):
+                                    pass  # 已决/非本机请求 — 幂等忽略
+                                except Exception as e:  # noqa: BLE001
+                                    print(f"[daemon] lend ack apply skip: {type(e).__name__}: {e}", file=sys.stderr)
+                                _devents.publish("borrow.update", {
+                                    "request_id": rid,
+                                    "decision": decision,
+                                    "reason": body.get("reason"),
+                                    "lender_did": ack.sender_did,
+                                })
+                        except Exception as e:  # noqa: BLE001
+                            print(f"[daemon] lend ack loop crashed: {e}; retry in 10s", file=sys.stderr)
+                            await _aio.sleep(10)
+
+                _aio.create_task(_ack_loop())
 
                 # P0 2026-06-10: encrypted LLM-proxy serve loop — answers
                 # borrowers' sealed proxy requests with this daemon's own LLM
