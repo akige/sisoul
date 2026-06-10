@@ -131,6 +131,72 @@ def cmd_history(
         _print_req(d)
 
 
+# ── M2 market: 挂牌出借 (写 vault/market_offer.json, daemon 周期广播) ───────
+
+market_app = typer.Typer(
+    name="market",
+    help="挂牌出借 LLM 额度到去中心化市场 (daemon 周期 GossipSub 广播 offer).",
+    no_args_is_help=True,
+)
+lend_app.add_typer(market_app, name="market")
+
+
+def _market_offer_path():
+    import os
+    from pathlib import Path
+    vault = Path(os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))).expanduser()
+    return vault / "market_offer.json"
+
+
+@market_app.command("join")
+def cmd_market_join(
+    models: str = typer.Option(..., "--models", "-m", help="逗号分隔, e.g. claude-sonnet-4-6,gpt-4o"),
+    price: float = typer.Option(0.0, "--price", "-p", help="USDT / 1k tokens (0=gift 免费)"),
+    mode: str = typer.Option("strong-tie-auto", "--mode", help="strong-tie-auto / per-request"),
+    daily_cap: int = typer.Option(0, "--daily-cap", help="每日 token 上限 (0=不限)"),
+    note: str = typer.Option("", "--note"),
+) -> None:
+    """挂牌: 把本节点的出借 offer 写入 vault, daemon 启动后周期广播到市场。"""
+    if mode not in ("strong-tie-auto", "per-request"):
+        typer.echo("mode 必须 strong-tie-auto / per-request"); raise typer.Exit(1)
+    offer = {
+        "models": [m.strip() for m in models.split(",") if m.strip()],
+        "price_usdt_per_1k": float(price),
+        "mode": mode,
+        "daily_cap_tokens": int(daily_cap),
+        "note": note,
+    }
+    p = _market_offer_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(offer, ensure_ascii=False, indent=2), encoding="utf-8")
+    typer.echo(f"  挂牌已写入: {p}")
+    typer.echo(f"  models={offer['models']} price={price} USDT/1k mode={mode}")
+    typer.echo("  daemon 在跑的话重启生效: pkill -f 'sisoul daemon'; sisoul daemon &")
+    if price > 0:
+        typer.echo("  ⚠️ 收费出借: 用无转售限制的 provider key (自有 OpenAI/Anthropic), "
+                   "勿用 Copilot (ToS 禁转售)")
+
+
+@market_app.command("leave")
+def cmd_market_leave() -> None:
+    """下牌: 删除 offer, daemon 停止广播 (已广播的 offer TTL 后自动过期)。"""
+    p = _market_offer_path()
+    if p.exists():
+        p.unlink()
+        typer.echo(f"  已下牌: {p} 删除; daemon 重启后停止广播")
+    else:
+        typer.echo("  当前未挂牌")
+
+
+@market_app.command("status")
+def cmd_market_status() -> None:
+    """看本节点当前挂牌状态。"""
+    p = _market_offer_path()
+    if not p.exists():
+        typer.echo("  未挂牌 (sisoul lend market join 挂牌)"); return
+    typer.echo(p.read_text(encoding="utf-8"))
+
+
 # ── v1.1 auto-approve (micropay USDT chain-watcher) ────────────────────────
 
 auto_app = typer.Typer(

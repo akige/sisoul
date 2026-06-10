@@ -28,6 +28,18 @@ class HealthResponse(BaseModel):
     daemon: dict
 
 
+_MARKET_BOOK = None
+
+
+def _get_market_book():
+    """Process-wide OfferBook (market listen loop writes, /market/offers reads)."""
+    global _MARKET_BOOK
+    if _MARKET_BOOK is None:
+        from sisoul.friend.market import OfferBook
+        _MARKET_BOOK = OfferBook()
+    return _MARKET_BOOK
+
+
 def create_app() -> FastAPI:
     """构造 FastAPI app (test + 真启动都用)."""
     app = FastAPI(
@@ -409,6 +421,42 @@ def create_app() -> FastAPI:
                 pass
 
         _aio.create_task(_check())
+
+    @app.get("/sisoul/market/offers", include_in_schema=False)
+    async def _market_offers(model: str = "", max_price: float = -1.0):
+        """M2: live lender offers, ranked by price × reputation × uptime.
+
+        Reputation computed locally from on-chain reviews (M1). PWA Borrow page
+        uses this to auto-pick the best available lender — single offline lender
+        just isn't in the list, not an error.
+        """
+        import time as _t
+        from sisoul.friend.market import route_best
+        book = _get_market_book()
+        now = _t.time()
+        if not model:
+            offers = book.live_offers(now)
+            return {"offers": [o.to_dict() for o in offers], "count": len(offers)}
+        # reputation map from local review store (empty until reviews exist)
+        reputations: dict = {}
+        try:
+            from sisoul.friend.reputation import compute_reputation, load_reviews
+            reputations = compute_reputation(load_reviews(), now_ts=now)
+        except Exception:  # noqa: BLE001 — no reviews yet / module optional
+            pass
+        routed = route_best(
+            book, model=model, reputations=reputations, now_ts=now,
+            max_price_usdt_per_1k=(None if max_price < 0 else max_price),
+        )
+        return {
+            "model": model,
+            "count": len(routed),
+            "offers": [
+                {**r.offer.to_dict(), "score": r.score,
+                 "reputation": r.reputation, "uptime": r.uptime}
+                for r in routed
+            ],
+        }
 
     @app.get("/sisoul/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -860,6 +908,48 @@ def create_app() -> FastAPI:
                     _aio.create_task(lender_serve_loop(transport, my_did))
                 except Exception as e:  # noqa: BLE001
                     print(f"[daemon] proxy serve loop init failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+                # M2 2026-06-10: market loops —
+                #  (a) listen the market topic, keep a local OfferBook of live offers
+                #  (b) if this node opted into lending (market_offer.json exists),
+                #      re-broadcast our own offer every OFFER_REFRESH_SEC.
+                try:
+                    from sisoul.friend.market import (
+                        OfferBook, LendOffer, subscribe_offers, publish_offer,
+                        OFFER_REFRESH_SEC,
+                    )
+                    import time as _t
+
+                    book = _get_market_book()  # process-wide, read by /market/offers
+
+                    async def _market_listen() -> None:
+                        while True:
+                            try:
+                                async for offer in subscribe_offers(transport):
+                                    book.ingest(offer, now_ts=_t.time())
+                            except Exception as e:  # noqa: BLE001
+                                print(f"[daemon] market listen crashed: {e}; retry 10s", file=sys.stderr)
+                                await _aio.sleep(10)
+
+                    async def _market_broadcast() -> None:
+                        from pathlib import Path as _P
+                        offer_file = vault / "market_offer.json"
+                        while True:
+                            try:
+                                if offer_file.exists():
+                                    import json as _j
+                                    d = _j.loads(offer_file.read_text("utf-8"))
+                                    d["lender_did"] = my_did
+                                    d["issued_at"] = _t.time()
+                                    await publish_offer(transport, LendOffer.from_dict(d))
+                            except Exception as e:  # noqa: BLE001
+                                print(f"[daemon] market broadcast skip: {type(e).__name__}: {e}", file=sys.stderr)
+                            await _aio.sleep(OFFER_REFRESH_SEC)
+
+                    _aio.create_task(_market_listen())
+                    _aio.create_task(_market_broadcast())
+                except Exception as e:  # noqa: BLE001
+                    print(f"[daemon] market loops init failed: {type(e).__name__}: {e}", file=sys.stderr)
 
                 # v1.1 auto-approve (opt-in: lender ran `sisoul lend auto-approve enable`)
                 if is_enabled():

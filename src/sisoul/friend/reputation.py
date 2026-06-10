@@ -367,3 +367,46 @@ def compute_reputation(
         # 极端: 所有权重为 0 (全 1 星 / 全零量) → 退化均匀。
         return {did: 1.0 / n for did in nodes}
     return {nodes[i]: t[i] / total for i in range(n)}
+
+
+# ── 本地评价存储 (vault jsonl) ───────────────────────────────────────────────
+#
+# M1 是纯计算; M2 需要本地落地的评价集合喂给 compute_reputation。append-only
+# jsonl (每行一条 Review.to_dict)。将来每条同时上 EAS attestation, 链上是真相源,
+# 本地 jsonl 只是缓存/离线可算。
+
+
+def _reviews_path(vault_dir: Optional[str] = None):
+    import os
+    from pathlib import Path
+    vault = Path(
+        vault_dir or os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))
+    ).expanduser()
+    return vault / "reviews.jsonl"
+
+
+def load_reviews(vault_dir: Optional[str] = None) -> list["Review"]:
+    """读 vault 本地评价集 (无文件返空, 坏行跳过)。喂给 compute_reputation。"""
+    import json
+    path = _reviews_path(vault_dir)
+    if not path.exists():
+        return []
+    out: list[Review] = []
+    for line in path.read_text("utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(Review.from_dict(json.loads(line)))
+        except Exception:  # noqa: BLE001 — 坏行不阻塞全量计算
+            continue
+    return out
+
+
+def save_review(review: "Review", vault_dir: Optional[str] = None) -> None:
+    """追加一条评价到本地 jsonl (append-only)。"""
+    import json
+    path = _reviews_path(vault_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(review.to_dict(), ensure_ascii=False) + "\n")
