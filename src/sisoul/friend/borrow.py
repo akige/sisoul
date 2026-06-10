@@ -344,6 +344,7 @@ def _proxy_call(
     prompt: str,
     mode: str = "strong-tie-auto",
     lend_request_id: Optional[str] = None,
+    provider: str = "openai",
 ) -> ProxyResult:
     # 1. 优先 injected mock (test only)
     if _INJECTED_MOCK is not None:
@@ -385,6 +386,7 @@ def _proxy_call(
             amount=amount,
             mode=mode,
             lend_request_id=lend_request_id,
+            provider=provider,
         )
     except Exception as e:
         # P2P 层失败 (lender 离线 / kubo 没起 / vault 不匹配) → 优雅降级 stub,
@@ -519,6 +521,7 @@ def borrow_resource(
     model: str,
     *,
     prompt: str = "",
+    provider: str = "openai",
     force_mode: Optional[BorrowMode] = None,
     emergency_flag: bool = False,
     per_request_timeout_sec: float = 30.0,
@@ -704,6 +707,7 @@ def borrow_resource(
                 prompt=prompt,
                 mode=session.mode,
                 lend_request_id=req.id,
+                provider=provider,
             )
         except ProxyError as e:
             session.status = "proxy-failed"

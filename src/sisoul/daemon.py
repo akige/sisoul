@@ -194,6 +194,7 @@ def create_app() -> FastAPI:
             resource_type="llm_quota",
             amount=int(body.get("token_count", 0)),
             model=body.get("model", ""),
+            provider=body.get("provider") or "openai",
             prompt=body.get("reason", "") or f"借 {body.get('token_count',0)} tokens via PWA",
             emergency_flag=bool(body.get("emergency_flag", False)),
             force_mode=_mode,

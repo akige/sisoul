@@ -521,6 +521,7 @@ class _BorrowRequestBody(_BaseModel):
     resource_type: str = _Field("llm_quota", description="llm_quota / ai_skill / compute")
     amount: int = _Field(..., description="tokens 或 minutes 或 1 (per skill use)")
     model: str = _Field(..., description="claude-opus-4-7 / gpt-5 / <skill-id>")
+    provider: str = _Field("openai", description="anthropic / openai / … (lender 端 get_adapter)")
     prompt: str = _Field("", description="给 LLM 的 prompt (proxy stub 也接受)")
     force_mode: Optional[str] = _Field(
         None,
@@ -589,6 +590,7 @@ def _post_borrow(body: _BorrowRequestBody) -> _BorrowResponseBody:
             amount=body.amount,
             model=body.model,
             prompt=body.prompt,
+            provider=body.provider,
             force_mode=fm,  # type: ignore[arg-type]
             emergency_flag=body.emergency_flag,
             per_request_timeout_sec=body.per_request_timeout_sec,

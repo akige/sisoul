@@ -54,7 +54,15 @@ class AnthropicAdapter(LLMAdapter):
                     "export ANTHROPIC_API_KEY=sk-ant-...",
                     provider="anthropic",
                 )
-            self._client = anthropic.Anthropic(api_key=key)
+            # ANTHROPIC_API_BASE / ANTHROPIC_BASE_URL → 自建 / 兼容 endpoint
+            # (lend proxy 场景: lender daemon 转发到自己配置的 endpoint)
+            base_url = os.environ.get("ANTHROPIC_API_BASE") or os.environ.get(
+                "ANTHROPIC_BASE_URL"
+            )
+            if base_url:
+                self._client = anthropic.Anthropic(api_key=key, base_url=base_url)
+            else:
+                self._client = anthropic.Anthropic(api_key=key)
         return self._client
 
     def chat(self, messages: list[dict], **kwargs) -> str:
