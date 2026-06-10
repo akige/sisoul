@@ -63,29 +63,42 @@ def create_app() -> FastAPI:
 
     @app.get("/sisoul/lend/list", include_in_schema=False)
     async def _alias_lend_list():
-        """PWA alias → /sisoul/lend/pending."""
+        """PWA alias → /sisoul/lend/pending. PWA 期望 LendListResponse
+        = {requests: LendRequestItem[]}, 不是 raw array (caller spread
+        会 TypeError: Spread requires iterable not undefined)."""
         from sisoul.friend.lend import LendStore
         try:
             with LendStore() as store:
                 pending = store.list_pending()
-                return [r.to_dict() if hasattr(r, "to_dict") else r.__dict__ for r in pending]
-        except Exception as e:
-            return JSONResponse(status_code=200, content=[])
+                requests = [r.to_dict() if hasattr(r, "to_dict") else r.__dict__ for r in pending]
+                return {"requests": requests}
+        except Exception:
+            return {"requests": []}
 
     @app.get("/sisoul/borrow/proxy-list", include_in_schema=False)
     async def _alias_borrow_proxy_list():
-        """PWA alias → /sisoul/borrow-proxy/list."""
+        """PWA alias → /sisoul/borrow-proxy/list. PWA 期望 ProxyListResponse
+        = {sessions: ProxySessionItem[]}, caller spread {} 报错."""
         try:
             from sisoul.friend.borrow import list_proxy_sessions
-            return list_proxy_sessions()
+            sessions = list_proxy_sessions()
+            # sessions 可能 list 也可能 {count, sessions} dict; 兜底 normalize
+            if isinstance(sessions, dict):
+                return {"sessions": sessions.get("sessions", [])}
+            return {"sessions": list(sessions) if sessions else []}
         except Exception:
-            return []
+            return {"sessions": []}
 
     @app.get("/sisoul/ledger/all", include_in_schema=False)
     async def _alias_ledger_all(direction: str = ""):
-        """PWA Friends/Borrow/Lend 拉所有方向的 ledger 汇总. 真没 cross-friend
-        sum, 返空 array 而非 422, 让 PWA 渲染空态而非红色 toast."""
-        return []
+        """PWA 期望 LedgerResponse = {entries, total_tokens, total_cost_usd}.
+        cross-friend sum 没实现, 返空 totals 让 PWA 渲染空态."""
+        return {
+            "direction": direction or None,
+            "entries": [],
+            "total_tokens": 0,
+            "total_cost_usd": 0,
+        }
 
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
