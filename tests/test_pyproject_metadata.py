@@ -42,7 +42,7 @@ def test_requires_python(pyproject):
 
 
 def test_has_license(pyproject):
-    assert pyproject["project"]["license"] == "Apache-2.0"
+    assert pyproject["project"]["license"] == "AGPL-3.0-or-later"
 
 
 def test_has_readme(pyproject):
@@ -61,7 +61,7 @@ def test_has_classifiers(pyproject):
     assert len(classifiers) >= 10
     joined = " ".join(classifiers)
     assert "Development Status :: 3 - Alpha" in joined
-    assert "License :: OSI Approved :: Apache Software License" in joined
+    assert "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)" in joined
     assert "Python :: 3.11" in joined
     assert "Python :: 3.12" in joined
 

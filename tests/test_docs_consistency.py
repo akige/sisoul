@@ -100,12 +100,12 @@ def test_version_consistency():
         f"VERSION ({version_file}) != __init__.py ({init_match.group(1)})"
 
 
-def test_license_apache_2():
-    """LICENSE is Apache-2.0 official text."""
+def test_license_agpl_3():
+    """LICENSE is AGPL-3.0 official text (relicensed 2026-06-10 to protect commons)."""
     license_text = (REPO / "LICENSE").read_text()
-    assert "Apache License" in license_text
-    assert "Version 2.0" in license_text
-    assert "http://www.apache.org/licenses/" in license_text
+    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in license_text
+    assert "Version 3" in license_text
+    assert "https://www.gnu.org/licenses/" in license_text
 
 
 def test_readme_has_install_command():
@@ -136,7 +136,7 @@ def test_pyproject_has_classifiers():
     pyproject = (REPO / "pyproject.toml").read_text()
     assert "classifiers" in pyproject
     assert "Development Status :: 3 - Alpha" in pyproject
-    assert "License :: OSI Approved :: Apache Software License" in pyproject
+    assert "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)" in pyproject
 
 
 def test_pyproject_has_urls():
