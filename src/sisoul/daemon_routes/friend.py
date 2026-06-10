@@ -271,7 +271,52 @@ def get_list(
     if status and status not in {"pending", "active", "revoked"}:
         raise HTTPException(status_code=400, detail="status 必须 pending/active/revoked")
     items = rel.list_friends(status=status, recompute_score=recompute_score)  # type: ignore[arg-type]
-    return [_friend_out(f) for f in items]
+    out = [_friend_out(f) for f in items]
+
+    # PWA Friends 调本 endpoint, 同时合并 didkey_friends.json (sisoul friend add
+    # 轻量路径写入), 避免 sqlite EAS-attestation table 为空时 PWA UI 空白.
+    try:
+        from pathlib import Path
+        import json as _json
+        from datetime import datetime, timezone
+
+        vd = Path(vault_dir).expanduser() if vault_dir else Path.home() / ".sisoul"
+        dk_path = vd / "identity" / "didkey_friends.json"
+        if dk_path.exists():
+            entries = _json.loads(dk_path.read_text(encoding="utf-8"))
+            existing_dids = {f.did for f in out}
+            for e in entries:
+                did = e.get("did", "")
+                if not did or did in existing_dids:
+                    continue
+                added = e.get("added_at", "")
+                ts = 0
+                try:
+                    ts = int(datetime.fromisoformat(added.replace("Z","+00:00")).timestamp() * 1000)
+                except Exception:
+                    pass
+                out.append(_FriendOut(
+                    did=did,
+                    handle=e.get("nickname") or did[:20],
+                    status="active",
+                    strong_tie_score=0.5,
+                    manual_score_override=None,
+                    is_mutual=False,
+                    created_at=added or "",
+                    became_active_at=added or None,
+                    last_interaction=added or "",
+                    interaction_count=0,
+                    request_attestation_uid=None,
+                    accept_attestation_uid=None,
+                    mutual_attestation_uid=None,
+                    revoke_attestation_uid=None,
+                    notes=f"did:key 朋友 (via {e.get('method','sisoul friend add')})",
+                ))
+    except Exception as _e:  # noqa: BLE001
+        import sys as _sys
+        print(f"[friend/list] didkey inject 失败: {type(_e).__name__}: {_e}", file=_sys.stderr)
+
+    return out
 
 
 # ── GET /sisoul/friend/requests ──────────────────────────────────────────────
