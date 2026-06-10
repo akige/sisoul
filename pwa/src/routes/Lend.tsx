@@ -356,11 +356,17 @@ function LendContent() {
     const friendFilter = searchParams.friend as string | undefined;
     let xs = localRequests();
     if (friendFilter) xs = xs.filter((r) => r.borrower_did === friendFilter);
-    // emergency 排前
+    // emergency 排前. created_at 可能 int (Unix epoch) 或 string (ISO),
+    // 兜底统一比较: 优先 numeric subtract, 否则 String.localeCompare.
     return [...xs].sort((a, b) => {
       if (a.emergency_flag && !b.emergency_flag) return -1;
       if (!a.emergency_flag && b.emergency_flag) return 1;
-      return b.created_at.localeCompare(a.created_at);
+      const ac = a.created_at as unknown;
+      const bc = b.created_at as unknown;
+      if (typeof ac === "number" && typeof bc === "number") {
+        return bc - ac; // 新的在前
+      }
+      return String(bc ?? "").localeCompare(String(ac ?? ""));
     });
   });
 

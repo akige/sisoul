@@ -65,14 +65,71 @@ def create_app() -> FastAPI:
     async def _alias_lend_list():
         """PWA alias → /sisoul/lend/pending. PWA 期望 LendListResponse
         = {requests: LendRequestItem[]}, 不是 raw array (caller spread
-        会 TypeError: Spread requires iterable not undefined)."""
+        会 TypeError: Spread requires iterable not undefined).
+
+        字段映射 (daemon LendStore.list_pending() → PWA LendRequestItem):
+        - id              → request_id
+        - amount          → token_count
+        - model           → model
+        - 派生 provider   = note.provider 或 'unknown'
+        - borrower_did    → borrower_did
+        - created_at int  → ISO string (PWA relativeTime() 期望 ISO)
+        - expires_at int  → ISO string
+        - emergency_flag  → emergency_flag
+        - note 解析 reason → reason
+        """
         from sisoul.friend.lend import LendStore
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+
+        def _epoch_to_iso(v):
+            if v is None:
+                return None
+            if isinstance(v, (int, float)):
+                try:
+                    return _dt.fromtimestamp(float(v), tz=_tz.utc).isoformat()
+                except Exception:
+                    return None
+            return str(v)
+
         try:
             with LendStore() as store:
                 pending = store.list_pending()
-                requests = [r.to_dict() if hasattr(r, "to_dict") else r.__dict__ for r in pending]
-                return {"requests": requests}
-        except Exception:
+                raw_items = [
+                    r.to_dict() if hasattr(r, "to_dict") else r.__dict__
+                    for r in pending
+                ]
+            mapped = []
+            for r in raw_items:
+                # note 是 JSON string, 解 provider/reason
+                provider = "unknown"
+                reason = None
+                note_raw = r.get("note", "")
+                if note_raw:
+                    try:
+                        n = _json.loads(note_raw) if isinstance(note_raw, str) else note_raw
+                        provider = n.get("provider", provider)
+                        reason = n.get("reason") or n.get("prompt")
+                    except Exception:
+                        pass
+                mapped.append({
+                    "request_id": r.get("id") or r.get("request_id") or "",
+                    "borrower_did": r.get("borrower_did", ""),
+                    "borrower_handle": r.get("borrower_handle"),
+                    "provider": provider,
+                    "model": r.get("model", ""),
+                    "token_count": int(r.get("amount") or r.get("token_count") or 0),
+                    "reason": reason,
+                    "emergency_flag": bool(r.get("emergency_flag", False)),
+                    "created_at": _epoch_to_iso(r.get("created_at"))
+                                  or r.get("created_at_iso") or "",
+                    "expires_at": _epoch_to_iso(r.get("expires_at"))
+                                  or r.get("expires_at_iso") or "",
+                })
+            return {"requests": mapped}
+        except Exception as _e:  # noqa: BLE001
+            import sys as _sys
+            print(f"[lend/list alias] failed: {_e}", file=_sys.stderr)
             return {"requests": []}
 
     @app.get("/sisoul/borrow/proxy-list", include_in_schema=False)
