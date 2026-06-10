@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/akige/sisoul/actions/workflows/ci.yml/badge.svg)](https://github.com/akige/sisoul/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/akige/sisoul?include_prereleases)](https://github.com/akige/sisoul/releases)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://www.python.org/)
 [![Sigstore](https://img.shields.io/badge/Sigstore-keyless%20OIDC-green)](https://docs.sigstore.dev/)
 [![PWA](https://img.shields.io/badge/PWA-akige.github.io%2Fsisoul-blue)](https://akige.github.io/sisoul/)
@@ -202,7 +202,13 @@ Current state: **1939+ pass / 0 fail / 24 skip**.
 
 ## Contribute
 
-Apache-2.0 licensed. PRs welcome.
+AGPL-3.0-or-later licensed. PRs welcome.
+
+> **Why AGPL + commercial dual?** The protocol stays free forever. AGPL means
+> anyone who forks and runs a modified network **must publish their changes** —
+> no closed-source white-labeling of the commons. Companies needing a
+> closed-source/internal deployment can request a commercial license (contact
+> in GOVERNANCE.md). This protects the shared network, not a company.
 
 ```bash
 git clone https://github.com/akige/sisoul
@@ -232,4 +238,4 @@ maintainer time + bootstrap nodes + audits, donate directly:
 
 🤖 sisoul is developed with [Claude Code](https://claude.com/claude-code).
 
-License: Apache-2.0
+License: AGPL-3.0-or-later (commercial dual-license available — see GOVERNANCE.md)

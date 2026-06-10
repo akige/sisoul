@@ -120,7 +120,7 @@ Python 3.11+ · macOS / Linux / WSL2 (完整步骤 [docs/INSTALL.md](https://git
 
 ## 链接
 
-- GitHub: https://github.com/akige/sisoul (Apache-2.0)
+- GitHub: https://github.com/akige/sisoul (AGPL-3.0 · fork 改了必须开源, 守护公共网络)
 - 白皮书: [docs/whitepaper/sisoul-v1.0-whitepaper.md](https://github.com/akige/sisoul/blob/main/docs/whitepaper/sisoul-v1.0-whitepaper.md)
 - 治理 + 永不发币论证: [docs/GOVERNANCE.md](https://github.com/akige/sisoul/blob/main/docs/GOVERNANCE.md)
 - 激励设计: [docs/INCENTIVE-DESIGN.md](https://github.com/akige/sisoul/blob/main/docs/INCENTIVE-DESIGN.md)

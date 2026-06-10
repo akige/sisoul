@@ -9,7 +9,7 @@ description = "Decentralized P2P AI agent protocol (did:key + kubo IPFS + Signal
 authors = [{ name = "sisoul maintainers" }]
 maintainers = [{ name = "sisoul maintainers" }]
 requires-python = ">=3.11"
-license = "Apache-2.0"
+license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = [
     "p2p", "decentralized", "ai-agent", "ipfs", "did", "self-sovereign-identity",
@@ -25,7 +25,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows :: Windows 10",
