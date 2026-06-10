@@ -1,126 +1,130 @@
-## V2EX 发布文 (final · 含真命令清单 · alpha 真路径 · 含 USDT 捐助)
+# V2EX 发布文 (v2 · 2026-06-10 按"借额度不借账号"卖点重写)
 
-> 标题: `[分享] sisoul · 自己 own 的 AI agent · 永不发币 · 招 alpha 极客一起测`
+> 标题: `[分享] sisoul · 把你的 Claude/GPT 额度借给朋友, 他看不到你的 key, 你看不到他的 prompt · 开源 · 0 服务器 · 永不发币`
 
 ---
 
-最近做了个开源项目 sisoul, 7 个月闭关写完, 招几个极客一起测 alpha. 仓还 0 star, 你来就是第一波.
+V 站隔三差五就有"求合租 Claude / 求拼 API"的帖子, 但合租只有两条路, 都难受:
 
-## 你今天来能跑什么命令 (真测过, 100% 诚实)
+- **直接给 key** — 对方能看你账单、能干任何事, 你裸奔
+- **进合租中转站** — 你的每一条 prompt 都过站长的服务器, 信不信由你, 跑路看缘分
 
-**单机闭环 (一个人就能玩):**
+我花 7 个月写了第三条路, 开源了: **sisoul** — 借出去的是**一次次加密转发的回复**, 不是账号。
 
-```bash
-sisoul init --goals "..."                              # 建 vault + 12 词 BIP-39
-sisoul founder init --from vault-template/founder      # 装 @founder agent
-sisoul founder chat "为什么 sisoul 不发币?"            # 真引用 vault case 答你
-sisoul backup                                           # 打包 vault → zip
-sisoul restore <12 words>                              # 跨机恢复
-sisoul self-check                                       # 8/8 验证
-sisoul daemon &                                         # 起 daemon :9876
-sisoul status                                           # 看 vault / daemon 状态
-python ops/scripts/rsi-daily-suggest.py                # 让 LLM 改进 @founder prompt
-```
+> 一句话: 中心化共享 LLM 你得信运营方; sisoul 你只需要信你朋友 — 而信任边界、额度、批准权全在你自己手里。
 
-**双机/朋友 (找一个朋友一起装两台):**
+仓还 0 star, 你来就是第一波 alpha。
 
-```bash
-sisoul friend qr                                        # 生 QR 给朋友扫
-sisoul friend qr-scan <png>                            # 扫朋友 QR
-sisoul friend add did:key:z6Mk...                       # 直接粘 did:key 加好友
-sisoul friend mdns                                      # 局域网 Bonjour 发现
-sisoul friend petname <did> alice                       # 起本地昵称
-sisoul borrow run FRIEND_DID skill_llm 5000 -p "..."   # 借朋友 LLM quota (今天默认 gift 模式: 借出方免费)
-sisoul lend list / approve / deny                      # 借出方收到 request → 批准/拒绝
-sisoul chat send <did> "hi"                            # Signal Double Ratchet + PQXDH 端对端聊
-sisoul chat recv                                        # 收消息
-```
+## 跟"给 key / 合租中转"的真区别
 
-**3 档 incentive 全 MVP 已 ship (2026-06-06 当晚补完)**:
+| | 直接给 key | 合租中转站 | sisoul borrow |
+|---|---|---|---|
+| 对方拿到什么 | 你的 key 本体 | 站长发的子 key | 一次加密转发的回复 |
+| 你的 key 在哪 | 对方手里 | 站长服务器 | **不出你的机器** |
+| 谁能看 prompt | — | 站长技术上全能看 | **借出方也看不到** (E2E 加密, 内存解密即转发, 不落盘) |
+| 额度控制 | 无 | 站长说了算 | 你逐好友设: 月上限 / 频率 / 自动批 or 逐次批 |
+| 中间商抽成 | — | 有 | **0** (要收钱也是好友间直转 USDT, 我们不碰) |
+| 跑路风险 | — | 有 | 没有"我们"可跑 — 0 服务器, 卸载即消失 |
 
-- ✅ **gift 模式** (借出方免费): `sisoul borrow run DID llm_quota 5000` 默认.
-- ✅ **kudos 模式** (非货币计数): `sisoul kudos balance/grant/history/decay` 全 CLI 真跑, `sisoul borrow run --dry-run` 真显借 5000 token 扣几个 kudos. 5%/月衰减 daily LaunchAgent 真挂.
-- ✅ **USDT-TRC20 micropay 模式** (真钱): `sisoul wallet set-usdt-trc20 T...` 设你的收款地址, `sisoul borrow run --dry-run` 真显借出方要收多少 USDT + tronscan 验证 link + "付了 tx hash 给借出方" 人话指示.
-- 25/25 pytests 真过 (18 incentive + 7 v1 integration).
+技术上诚实声明可信边界: prompt 用 libsodium Box (X25519, 密钥就是 did:key 本体) 端到端加密, 借出方 daemon 只在内存解密后转给 LLM, 不落盘不进 log (`src/sisoul/friend/encrypted_proxy.py` 有 `enforce_no_disk_write` 自检, 代码可审)。但借出方**机器**本身是可信边界 — 它毕竟要把明文发给 LLM API。防君子审小人, 不吹"绝对零知识"。
 
-**今天还没实现的 (诚实分级)**:
-
-- ✅ **链上 mainnet attestation** — Optimism mainnet EAS 真注册. 第一个 username `@akige` 已上链 ([tx 0xabcb1bab...](https://optimistic.etherscan.io/tx/0xabcb1bab93946d491503a6e1368ee8c6b870085e185eed83f629459d865bb72c) · [easscan attestation](https://optimism.easscan.org/attestation/view/0x78375e7ed6cbec575f630be8e32377da91de4801e6f9799bfb16a7c71ca6acdb)). 任何人 `sisoul username resolve akige` 立刻通过 easscan GraphQL 拿到 did:key, 整链路 0 中心化 server. 你的 username 注册 = 你自己签 + 你自己付 ~$0.5-1 OP ETH gas, sisoul 完全不沾钱也不沾权.
-- ✅ **USDT 自动到账确认** — alpha v1.1 已 ship. `sisoul lend auto-approve enable` 后, 借出方 daemon 每 30s 轮询 TronGrid, USDT 到账自动 approve + GossipSub 发 ACK 给借入方. 借出方 0 手工干预.
-- ✅ **A3 借用走 GossipSub** — 借用请求不再走 Waku push, 改走 IPFS kubo GossipSub per-DID topic (`/sisoul/lend/v1/<sha256(did):16>`). 完全去中心化, aws/cloud 主机 host_policy 物理拒跑 GossipSub.
-- ✅ **install.sh 一行装** — `curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash` 真测过, 自动探测 OS + Python + kubo + 写 wrapper + PATH. mac 还可 `brew install --formula https://raw.githubusercontent.com/akige/sisoul/main/Formula/sisoul.rb`.
-- ✅ **macOS 菜单栏 native app** — `tools/menubar/` 已 ship. `cd tools/menubar && bash build_app.sh` 真打出 29MB `Sisoul.app` (rumps + py2app), Finder 双击就跑. menu bar 显示 `S•` (online) / `S` (offline) + 15 个菜单项 (Add friend / Ask founder / Borrow LLM / Start-Stop daemon / Open dashboard ...). 真测过 `Add friend...` 弹 native dialog 真发 subprocess 调 sisoul CLI, EAS Optimism resolve 真打到 mainnet GraphQL.
-- ✅ **PWA dashboard 上线** — [akige.github.io/sisoul/](https://akige.github.io/sisoul/) 浏览器打开就看. daemon offline 时显示 5 步装机命令 (带复制按钮) + 3 核心场景卡片 + GitHub/INSTALL 底链; daemon online 切到 Vault/Friends/Lend/Borrow/Chat 全功能 UI.
-- ✅ **PWA 上借 LLM 全程真路径 (2026-06-10)** — Borrow 页选朋友 → 发起 → prompt 用 libsodium Box (X25519, 密钥就是 did:key 本体) 加密 → GossipSub 送到借出方 daemon → 借出方内存解密调**自己的** LLM endpoint (`OPENAI_API_BASE`/`OPENAI_API_KEY` 自己配) → 加密回传 → 你页面上看到真回复. 借出方全程看不到你的 prompt 明文 (不落盘不进 log, 代码可审).
-- ✅ **per-request 真审批 (2026-06-10)** — Borrow 页选"等对方批准": 对方 Lend 页**实时弹出**你的请求卡片 (SSE 推送, 不用刷新), 点 Approve 你这边立刻拿到回复, 点 Deny 你立刻看到拒绝理由. 也有"自动批准 (强关系预授权)"模式跳过审批.
-- ❌ **iOS / Android native app** — Skeleton 在 `mobile/{ios,android}/` (Swift Package + Kotlin Gradle), 单元测试通过但**没用户能下载的 .ipa / .apk**. Roadmap T+1m~T+2m.
-
-## 3 个核心场景
-
-- 你在自己机器上 `sisoul founder chat "为什么不发币"` — 它真引用代码库里 sprint-8-zh-no-token 这个 case 答你, 不瞎编. 这个 founder 是个 LLM persona, 装在你的 vault 里, 今天用 Claude 跑, 明天换 GPT 也是同一个它.
-- 朋友手机没钱开 GPT-Plus, 你把自家 API key 借给他 — prompt 经过 PQXDH + Double Ratchet 加密, 你看不到他在问啥, 他用不了你 key 本体. **今天走 gift 模式 (借出方免费, 双方 reputation 互惠)**. 想强制陌生人付费的 kudos / USDT micropay 是下一步.
-- 你卸了我们也不知道 — 没服务器、没数据库、没你的邮箱手机号. vault 在你硬盘, 12 个 BIP-39 助记词在你脑子里.
-
-## 3 个核心原则 (硬约束)
-
-- **永不发币** (白皮书 §4.10). Tor 22 年没 token, Mozilla 25 年, IETF 40 年, Linux 33 年. 基础设施跑得长就是因为没 token. `docs/GOVERNANCE.md` 全文公开 funding 模型. **不接受请绕道**.
-- **永不下架** (§4.11). 我家断电协议还跑.
-- **没空投、没积分**. 早期 alpha 拿个不可转 Soulbound Badge 留念 (0 经济价值, v1.0 stable T+6m 发).
-
-## 装机 (Python 3.11+, macOS/Linux/WSL2 都验证过, 完整步骤 docs/INSTALL.md)
+## 5 分钟真上手 (全部真测过)
 
 ```bash
-# 推荐: 一行装 (auto 探测 OS+Python+kubo, no sudo)
+# 装 (auto 探测 OS + Python + kubo, no sudo)
 curl -sSL https://raw.githubusercontent.com/akige/sisoul/main/install.sh | bash
 
-# Mac 用户还能 brew 装
-brew install --formula https://raw.githubusercontent.com/akige/sisoul/main/Formula/sisoul.rb
-
-# 或老派 4 步源码装 (要 Python 3.11+, macOS 默认 3.9 不行)
-git clone https://github.com/akige/sisoul
-cd sisoul
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e '.[daemon,crypto,chat,llm]'
-
-# 2. 装 wrapper 让 sisoul 命令全局可用 (不用每次 activate venv)
-mkdir -p ~/.local/bin && cat > ~/.local/bin/sisoul <<EOF
-#!/usr/bin/env bash
-exec $PWD/.venv/bin/sisoul "\$@"
-EOF
-chmod +x ~/.local/bin/sisoul
-echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshrc && exec $SHELL
-
-# 3-7: 见上 "你今天来能跑什么命令" 段
+sisoul init --goals "..."          # 12 词 BIP-39 → did:key 身份, 0 注册 0 gas
+sisoul daemon &                    # 起本机 daemon
+# 浏览器开 http://127.0.0.1:9876/app/  → 全功能 dashboard
 ```
 
-## 借 LLM 的激励/成本设计 (docs/INCENTIVE-DESIGN.md 全文 · 3 档)
+**找一个朋友, 两台机器:**
 
-| 场景 | 模式 | 借出方拿 | 借入方付 | 今天 ship 了? |
-|---|---|---|---|---|
-| 真朋友 | gift | reputation +20 + 社交感谢 | 0 | ✅ 默认就是 |
-| V2EX 网友 | kudos | 计数 +N | 计数 -N (不可转, 5%/月衰减) | ✅ MVP 已 ship |
-| 陌生人/紧急 | USDT-TRC20 micropay | 直接收 USDT 到自己钱包 | 0.01 USDT/1k token + TRX gas | ✅ MVP 已 ship (dry-run quote 真测过) |
+```bash
+sisoul friend qr                   # 生 QR 给朋友扫 (或直接粘 did:key / 局域网 mDNS 发现)
+sisoul friend add did:key:z6...    # 双方互加
+sisoul perms set <对方did> --mode strong-tie-auto --monthly-cap 1000000   # 借出方设额度
+```
 
-**sisoul 在 USDT micropay 里抽 0% — 借入方直接打钱给借出方, 我们不托管不路由. 守 §4.10**.
+然后在 PWA 的 Borrow 页:
 
-reputation grade A/B/C/D 是信号层 (上链 EAS), 不阻断借 — 你可以借给 F 级, 你可以拒绝 A 级. 是参考, 不是门禁.
+1. 选朋友 → 填 token 数 + prompt → 选审批模式
+2. **"等对方批准"模式**: 对方 Lend 页**实时弹出**你的请求卡片 (SSE 推送, 不用刷新), 点 Approve 你立刻拿到回复, 点 Deny 你立刻看到理由
+3. **"自动批准"模式**: 强关系预授权, 秒回
+4. 回复直接渲染在卡片里 — 整条链路: 你的 prompt 加密 → GossipSub P2P → 对方 daemon 内存解密 → 调**对方自己配的** LLM endpoint → 加密回传
 
-## 支持开发 (我们靠 grants + sponsorship + donations, 不发币)
+非好友 (任何陌生 did) 来借 → daemon 直接拒, 烧不了你的配额。
 
-- **USDT (TRC20)**: `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn` ([tronscan 链上可查](https://tronscan.org/#/address/TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn))
-- 这是维护者自己的钱包 (跟 panshi.io 同一个), 不是新发的, 不是 token, 没有"早期捐助者特权". 纯捐, 透明上链.
-- 其他: Optimism RetroPGF (T+6m 申请) / Gitcoin / EF Grant. 完整模型 `docs/GOVERNANCE.md`.
+顺手还有 **Signal 级 E2E chat** (Double Ratchet + PQXDH): `sisoul chat send <did> "hi"` — 跟借 LLM 同一套好友关系和密钥, 不用再注册一个 IM。
+
+## 借 LLM 的成本设计 (3 档, docs/INCENTIVE-DESIGN.md)
+
+| 场景 | 模式 | 借出方拿 | 借入方付 |
+|---|---|---|---|
+| 真朋友 | gift (默认) | reputation + 社交感谢 | 0 |
+| 网友 | kudos | 计数 +N (不可转, 5%/月衰减) | 计数 -N |
+| 陌生人/紧急 | USDT-TRC20 micropay | USDT 直接到自己钱包 | ~0.01 USDT/1k token |
+
+**sisoul 抽 0%** — 借入方直接打钱给借出方, 我们不托管不路由。
+
+## 诚实分级: 今天有什么 / 没什么
+
+✅ 已 ship 且真测:
+
+- 一行 install.sh (mac/linux/WSL2) + Homebrew formula + macOS 菜单栏 app (29MB Sisoul.app)
+- PWA dashboard 14 页 (daemon 本机 serve, 也有 [GitHub Pages 镜像](https://akige.github.io/sisoul/))
+- 借 LLM 加密真转发 + per-request 实时审批 (上面那套, 2026-06-10 全链路 e2e 过)
+- E2E chat / kudos / USDT micropay (dry-run quote) / USDT 到账自动批 (TronGrid 轮询)
+- 链上 username: `@akige` 已在 Optimism mainnet EAS 注册 ([tx](https://optimistic.etherscan.io/tx/0xabcb1bab93946d491503a6e1368ee8c6b870085e185eed83f629459d865bb72c) · [attestation](https://optimism.easscan.org/attestation/view/0x78375e7ed6cbec575f630be8e32377da91de4801e6f9799bfb16a7c71ca6acdb)), `sisoul username resolve akige` 任何人可验
+- 更新通知: daemon 自查新版 → PWA 角标 + `sisoul update` 一键升级 (git pull, 不经任何我们的服务器)
+
+❌ 还没有 (别骂, 先说了):
+
+- iOS / Android native app (skeleton 有, 没 .ipa/.apk, T+1m~T+2m)
+- 跨 NAT 的 P2P 实测规模数据 (协议栈是 kubo DHT + AutoNAT + Circuit Relay, 同网段/同主机真测过, 大规模跨 NAT 成功率就靠你们 alpha 帮我踩)
+
+🟡 中心化残留 (诚实标注, 但**没有一个在我们手里**):
+
+- 上游 LLM 是商业 SaaS — 你也可以把 endpoint 指本地 Ollama, 那就 100% 离线
+- 首次入网用 IPFS 官方公共 bootstrap 节点 (可自配)
+- `@username` 解析默认走 easscan 公共 indexer (数据在链上, 谁都能自建)
+- 代码分发走 GitHub
+
+## 适合谁
+
+- **结对/小圈子开发者**: 一人有 Claude/GPT 高配, 朋友想用不想绑卡 — borrow 就是为这造的
+- **隐私敏感型**: 不接受 prompt 过第三方中转、想审计每行转发代码的人
+- **自托管党**: 已经在跑 Ollama/NAS, 认"0 SaaS、卸载即消失"
+- **被发币项目伤过的去中心化爱好者**: 见下面三原则
+
+**不适合**: 纯小白 (要装 Python + kubo、要保管 12 词助记词)、只用手机的、要稳定 SLA 的。这是 alpha, 招的是极客测试员, 不是替代 ChatGPT。
+
+## 3 个硬原则
+
+- **永不发币** (白皮书 §4.10)。Tor 22 年没 token, Linux 33 年。`docs/GOVERNANCE.md` 全文公开 funding 模型。不接受请绕道。
+- **永不下架**。0 服务器架构, 我家断电协议还在你们机器之间跑。
+- **没空投、没积分**。早期 alpha 只有不可转的 Soulbound Badge 留念 (0 经济价值)。
+
+## 谁的服务器在支撑?
+
+你们自己的。每个 sisoul 节点 = 自带 daemon + kubo IPFS 节点, 消息走 GossipSub P2P mesh, LLM 调用走借出方自己的 key。项目方这边**没有任何一台服务器在用户路径上** — 1 万人在线, 我们这边负载是 0, 因为没有"我们这边"。(分发和更新检查走 GitHub CDN, 那是微软的事。)
+
+## 装机要求
+
+Python 3.11+ · macOS / Linux / WSL2 (完整步骤 [docs/INSTALL.md](https://github.com/akige/sisoul/blob/main/docs/INSTALL.md), 卡住先看 [排错手册](https://github.com/akige/sisoul/blob/main/docs/TROUBLESHOOTING.md))
+
+## 支持开发 (grants + 捐助, 不发币)
+
+- USDT (TRC20): `TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn` ([tronscan 可查](https://tronscan.org/#/address/TNesE1mJZ11ogsrPC7tsG2he7UJ7iKSmKn)) — 维护者个人钱包, 纯捐, 无任何"早期特权"
 
 ## 链接
 
 - GitHub: https://github.com/akige/sisoul (Apache-2.0)
-- 装机指南 (4 步真装): [docs/INSTALL.md](https://github.com/akige/sisoul/blob/main/docs/INSTALL.md)
-- 诚实状态盘点 (Q1-Q8 真状态): [docs/ALPHA-LAUNCH-STATUS-2026-06-06.md](https://github.com/akige/sisoul/blob/main/docs/ALPHA-LAUNCH-STATUS-2026-06-06.md)
-- 激励设计 (gift/kudos/micropay): [docs/INCENTIVE-DESIGN.md](https://github.com/akige/sisoul/blob/main/docs/INCENTIVE-DESIGN.md)
+- 白皮书: [docs/whitepaper/sisoul-v1.0-whitepaper.md](https://github.com/akige/sisoul/blob/main/docs/whitepaper/sisoul-v1.0-whitepaper.md)
 - 治理 + 永不发币论证: [docs/GOVERNANCE.md](https://github.com/akige/sisoul/blob/main/docs/GOVERNANCE.md)
-- 白皮书 §4.10: [docs/whitepaper/sisoul-v1.0-whitepaper.md](https://github.com/akige/sisoul/blob/main/docs/whitepaper/sisoul-v1.0-whitepaper.md)
-- founder agent 安全审计 (能不能控制你电脑): [docs/FOUNDER-SECURITY.md](https://github.com/akige/sisoul/blob/main/docs/FOUNDER-SECURITY.md)
-- 排错手册 (白屏/borrow 没反应/装机问题): [docs/TROUBLESHOOTING.md](https://github.com/akige/sisoul/blob/main/docs/TROUBLESHOOTING.md)
+- 激励设计: [docs/INCENTIVE-DESIGN.md](https://github.com/akige/sisoul/blob/main/docs/INCENTIVE-DESIGN.md)
+- founder agent 安全审计: [docs/FOUNDER-SECURITY.md](https://github.com/akige/sisoul/blob/main/docs/FOUNDER-SECURITY.md)
 - 讨论: https://github.com/akige/sisoul/discussions
 
-求轻喷求测试. bug → Issues. 想骂 → Discussions.
+求轻喷求测试。bug → Issues (修得很快, 有 hotfix SOP)。想骂 → Discussions。
