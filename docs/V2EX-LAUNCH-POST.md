@@ -66,7 +66,7 @@ sisoul perms set <对方did> --mode strong-tie-auto --monthly-cap 1000000   # �
 | 网友 | kudos | 计数 +N (不可转, 5%/月衰减) | 计数 -N |
 | 陌生人/紧急 | USDT-TRC20 micropay | USDT 直接到自己钱包 | ~0.01 USDT/1k token |
 
-**sisoul 抽 0%** — 借入方直接打钱给借出方, 我们不托管不路由。
+**当前 0 抽成** — 借入方直接打钱给借出方, 我们不托管不路由。未来可能引入一个低比例 (2-3%) protocol fee 资助开发团队 (审计 + grants 配套), 届时**透明公示、可在设置里关闭**, 不发币、不强制。
 
 ## 诚实分级: 今天有什么 / 没什么
 
