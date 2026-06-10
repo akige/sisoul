@@ -125,7 +125,8 @@ def create_app() -> FastAPI:
         except Exception as _de:  # noqa: BLE001
             import sys as _sys
             print(f"[borrow/run] borrower did derive failed: {_de}", file=_sys.stderr)
-        # translate
+        # translate. force_mode='strong-tie-auto' 让 alpha e2e 不卡 lender-timeout
+        # (Alice 自己 perms 配 Bob 为 strong-tie 即可, 不必等 Bob 真响应).
         translated = _BorrowRequestBody(
             borrower_did=borrower_did,
             lender_did=body.get("friend_did", ""),
@@ -134,6 +135,8 @@ def create_app() -> FastAPI:
             model=body.get("model", ""),
             prompt=body.get("reason", "") or f"借 {body.get('token_count',0)} tokens via PWA",
             emergency_flag=bool(body.get("emergency_flag", False)),
+            force_mode="strong-tie-auto",
+            per_request_timeout_sec=10.0,
         )
         # _post_borrow 是同步函数 (返 _BorrowResponseBody), 不能 await
         return _post_borrow(translated)
