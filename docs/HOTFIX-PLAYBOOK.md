@@ -45,6 +45,10 @@ node _full_audit.mjs                      # 期望: grand total bugs: 0
 
 ## 5. 发布
 
+**用户可见的修复必须 bump 版本号** (两处同步: `pyproject.toml` + `src/sisoul/__init__.py`
+的 `__version__`) — 用户的更新通知 (`sisoul update` / PWA 角标) 靠比对 main 分支
+pyproject version, 不 bump 用户永远不知道有新版.
+
 ```bash
 git add -A && git commit -m "fix(...): <根因一句话>"
 git push github main                                    # (维护者另推备份 remote)

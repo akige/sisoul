@@ -381,6 +381,34 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/sisoul/update/check", include_in_schema=False)
+    async def _update_check(force: int = 0):
+        """新版本检查 (24h 缓存). PWA TopBar 角标 + CLI sisoul update 用."""
+        import asyncio as _aio
+        from sisoul.update_check import check_update
+        return await _aio.to_thread(check_update, bool(force))
+
+    @app.on_event("startup")
+    async def _boot_update_check() -> None:
+        import asyncio as _aio
+
+        async def _check() -> None:
+            await _aio.sleep(20)  # 不抢启动关键路径
+            try:
+                from sisoul.update_check import check_update
+                from sisoul import daemon_events as _ev
+                r = await _aio.to_thread(check_update)
+                if r.get("update_available"):
+                    print(
+                        f"[daemon] 新版本可用: {r['current']} → {r['latest']} "
+                        f"(升级: sisoul update)", file=sys.stderr,
+                    )
+                    _ev.publish("update.available", r)
+            except Exception:  # noqa: BLE001 — 更新检查绝不影响 daemon
+                pass
+
+        _aio.create_task(_check())
+
     @app.get("/sisoul/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         """Health check endpoint. Phase 1 W2 ship."""

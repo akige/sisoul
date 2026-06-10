@@ -113,6 +113,7 @@ from sisoul.cli_commands.completion import cli_completion
 from sisoul.cli_commands.friend_discover import cli_friend_discover
 from sisoul.cli_commands.backup import cli_backup
 from sisoul.cli_commands.self_check import cli_self_check  # noqa: E402
+from sisoul.cli_commands.update import cli_update  # noqa: E402
 
 app.command("remember")(cli_remember)
 app.command("stats")(cli_stats)
@@ -123,6 +124,7 @@ app.command("invite")(cli_invite)
 app.command("cheatsheet")(cli_cheatsheet)
 app.command("completion")(cli_completion)
 app.command("friend-discover")(cli_friend_discover)
+app.command("update")(cli_update)
 app.command("backup")(cli_backup)
 app.command("self-check")(cli_self_check)
 app.add_typer(case_app, name="case")

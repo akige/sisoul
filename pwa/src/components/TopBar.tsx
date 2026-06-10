@@ -30,9 +30,26 @@ interface DaemonHealth {
   version?: string;
 }
 
+interface UpdateInfo {
+  update_available: boolean;
+  latest?: string;
+}
+
 export default function TopBar() {
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [health, setHealth] = createSignal<DaemonHealth>({ online: false });
+  const [update, setUpdate] = createSignal<UpdateInfo>({ update_available: false });
+
+  const checkUpdate = async () => {
+    try {
+      const r = await fetch(`${DAEMON_BASE}/sisoul/update/check`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) setUpdate(await r.json());
+    } catch {
+      /* 离线 / daemon 老版本没这个端点 — 角标不显示即可 */
+    }
+  };
 
   const checkHealth = async () => {
     try {
@@ -54,6 +71,7 @@ export default function TopBar() {
 
   onMount(() => {
     checkHealth();
+    checkUpdate(); // daemon 端 24h 缓存, 这里只在页面打开时问一次
     timer = setInterval(checkHealth, 15_000); // 15s poll
   });
 
@@ -75,6 +93,15 @@ export default function TopBar() {
       <span class="font-mono text-sisoul-accent font-bold md:hidden">sisoul</span>
 
       <div class="ml-auto flex items-center gap-3 text-sm text-sisoul-muted font-mono">
+        <Show when={update().update_available}>
+          <span
+            class="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40 cursor-help"
+            title={`新版本 ${update().latest} 可用 — 终端跑: sisoul update`}
+            data-testid="update-badge"
+          >
+            新版 {update().latest} · sisoul update
+          </span>
+        </Show>
         <span
           class="w-2 h-2 rounded-full inline-block transition-colors"
           classList={{
