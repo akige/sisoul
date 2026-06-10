@@ -113,16 +113,18 @@ def create_app() -> FastAPI:
         except Exception as _ie:
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=500, content={"error": f"borrow router import 失败: {_ie}"})
-        # 拿 borrower_did (Alice 自己): 直接 derive from identity, 或读 ~/.sisoul/dna
-        borrower_did = ""
+        # 拿 borrower_did (Alice 真 did:key, 跟 perms 配置匹配):
+        # 真路径 — 复用 CLI did show 真函数 (X25519 派生).
+        borrower_did = "did:key:unknown"
         try:
             from sisoul.identity.seed import load_mnemonic_from_file, mnemonic_to_master_key
-            from sisoul.identity.did import generate_did_key_from_master
+            from sisoul.identity.did_key import did_key_from_master
             mnemonic = load_mnemonic_from_file()
             master = mnemonic_to_master_key(mnemonic)
-            borrower_did, _, _ = generate_did_key_from_master(master, index=0)
-        except Exception:
-            borrower_did = "did:key:unknown"
+            borrower_did = did_key_from_master(master, index=0)
+        except Exception as _de:  # noqa: BLE001
+            import sys as _sys
+            print(f"[borrow/run] borrower did derive failed: {_de}", file=_sys.stderr)
         # translate
         translated = _BorrowRequestBody(
             borrower_did=borrower_did,
