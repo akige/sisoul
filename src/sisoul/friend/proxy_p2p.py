@@ -265,6 +265,41 @@ async def lender_serve_loop(transport: Any, my_did: str) -> None:
             await asyncio.sleep(10)
 
 
+def _is_friend(did: str) -> bool:
+    """Lender 端好友校验 — 不是好友不服务 (防陌生人烧 LLM 配额).
+
+    查两处: vault didkey_friends.json (sisoul friend add 轻量路径) +
+    FriendDB sqlite (EAS attestation 路径). 都查不到 → False.
+    """
+    def _clean(d: str) -> str:
+        while d.startswith("did:sisoul:did:"):
+            d = d[len("did:sisoul:"):]
+        return d
+
+    target = _clean(did)
+    vault = Path(
+        os.environ.get("SISOUL_VAULT", str(Path.home() / ".sisoul"))
+    ).expanduser()
+    for p in (vault / "identity" / "didkey_friends.json", vault / "didkey_friends.json"):
+        try:
+            if p.exists():
+                for e in json.loads(p.read_text(encoding="utf-8")):
+                    if _clean(str(e.get("did", ""))) == target:
+                        return True
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        from sisoul.friend.relationship import FriendDB
+
+        with FriendDB() as db:
+            for f in db.list_friends():
+                if _clean(f.did) == target:
+                    return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def _lend_approved_locally(borrower_did: str, remote_request_id: str) -> bool:
     """Lender 端复核: 本机 LendStore 里该 borrower 的请求是否已 approved.
 
@@ -306,6 +341,11 @@ async def _serve_one(transport: Any, proxy: Any, body: dict) -> None:
     #   approve 才服务 (P1 真审批; 借入方只在收到 approved ack 后才会发 proxy
     #   请求, 这里是 lender 端的不信任复核)
     mode = str(body.get("mode", ""))
+    # 两种模式都先验好友 — 陌生人不服务 (防配额滥用)
+    if not _is_friend(borrower_did):
+        resp.update(status="denied", reason="borrower is not in lender's friend list")
+        await _publish_resp(transport, borrower_did, resp)
+        return
     if mode == "per-request":
         if not _lend_approved_locally(
             borrower_did, str(body.get("lend_request_id") or "")
