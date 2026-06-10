@@ -133,7 +133,8 @@ def create_app() -> FastAPI:
             prompt=body.get("reason", "") or f"借 {body.get('token_count',0)} tokens via PWA",
             emergency_flag=bool(body.get("emergency_flag", False)),
         )
-        return await _post_borrow(translated)
+        # _post_borrow 是同步函数 (返 _BorrowResponseBody), 不能 await
+        return _post_borrow(translated)
 
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
