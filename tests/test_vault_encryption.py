@@ -35,8 +35,14 @@ def test_derive_master_key_different_mnemonic_different_key() -> None:
     assert k1 != k2
 
 
-def test_derive_master_key_placeholder_default() -> None:
-    """传 None 应 = 传 placeholder."""
+def test_derive_master_key_placeholder_default(monkeypatch) -> None:
+    """传 None 且无真 seed 时应 = 传 placeholder.
+
+    密闭: None 路径会优先读真 vault seed (开发机 ~/.sisoul/seed.txt 存在时
+    返回真 key ≠ placeholder, 是正确生产行为). 用 SISOUL_SEED_FILE 指到
+    不存在的路径, 强制走 placeholder fallback 分支.
+    """
+    monkeypatch.setenv("SISOUL_SEED_FILE", "/nonexistent/sisoul-test-seed.txt")
     assert derive_master_key(None) == derive_master_key(PLACEHOLDER_MNEMONIC)
 
 

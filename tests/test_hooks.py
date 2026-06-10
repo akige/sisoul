@@ -183,8 +183,10 @@ def test_session_start_goals_injected() -> None:
 
 def test_session_start_daemon_offline_silent() -> None:
     """daemon 不在线: session_start 静默 exit 0, 无报错."""
-    # 不起 mock daemon, 用一个肯定没 server 的端口
-    env = {"SISOUL_PORT": "19999"}
+    # 不起 mock daemon, 用一个肯定没 server 的端口.
+    # hook 真读的是 SISOUL_BASE (SISOUL_PORT 是老变量) — 只设 PORT 会让 hook
+    # 打默认 9876, 开发机有真 daemon 在跑时假失败.
+    env = {"SISOUL_PORT": "19999", "SISOUL_BASE": "http://127.0.0.1:19999"}
     result = subprocess.run(
         ["bash", str(SESSION_START)],
         capture_output=True,

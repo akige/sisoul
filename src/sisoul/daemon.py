@@ -195,8 +195,10 @@ def create_app() -> FastAPI:
             force_mode="strong-tie-auto",
             per_request_timeout_sec=10.0,
         )
-        # _post_borrow 是同步函数 (返 _BorrowResponseBody), 不能 await
-        return _post_borrow(translated)
+        # _post_borrow 是同步阻塞函数 (内部 P2P proxy 往返可达 15s),
+        # 走 to_thread 不阻塞 event loop (借出方 serve loop 还要靠这个 loop 跑).
+        import asyncio as _aio
+        return await _aio.to_thread(_post_borrow, translated)
 
     @app.post("/sisoul/friend/add", include_in_schema=False)
     async def _alias_friend_add(body: dict):
@@ -748,6 +750,18 @@ def create_app() -> FastAPI:
                             await _aio.sleep(10)
 
                 _aio.create_task(_ingest_loop())
+
+                # P0 2026-06-10: encrypted LLM-proxy serve loop — answers
+                # borrowers' sealed proxy requests with this daemon's own LLM
+                # endpoint (OPENAI_API_BASE / OPENAI_API_KEY env). Daemon is
+                # the "production wrapper" per encrypted_proxy._default_forwarder
+                # contract, so enable the real forwarder here.
+                _os.environ.setdefault("SISOUL_DEFAULT_FORWARDER_REAL", "1")
+                try:
+                    from sisoul.friend.proxy_p2p import lender_serve_loop
+                    _aio.create_task(lender_serve_loop(transport, my_did))
+                except Exception as e:  # noqa: BLE001
+                    print(f"[daemon] proxy serve loop init failed: {type(e).__name__}: {e}", file=sys.stderr)
 
                 # v1.1 auto-approve (opt-in: lender ran `sisoul lend auto-approve enable`)
                 if is_enabled():

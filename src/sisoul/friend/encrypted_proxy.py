@@ -667,6 +667,53 @@ async def proxy_chat_request_async(
     )
 
 
+# ── borrow-path module entry (P0 2026-06-10) ─────────────────────────────────
+#
+# borrow._proxy_call 的 import 目标. 之前不存在 → import 永远失败 → borrow 永远
+# 走 stub-passthrough. 现在真走 proxy_p2p.borrower_roundtrip: Box 加密 prompt
+# 经 GossipSub 发 lender daemon, lender 解密调自己的 LLM endpoint, 加密回传.
+
+
+def proxy_chat_request(
+    *,
+    borrower_did: str,
+    lender_did: str,
+    model: str,
+    prompt: str,
+    amount: int = 0,
+    provider: str = "openai",
+    timeout: Optional[float] = None,
+) -> dict[str, Any]:
+    """Borrow 真路径 (Alice 端): 加密 prompt → GossipSub → lender → 解密 response.
+
+    Returns:
+        {"text", "tokens_used", "model_used", "request_id"} — borrow._proxy_call
+        映射成 ProxyResult(method="dev-b-encrypted-proxy").
+
+    Raises:
+        proxy_p2p.ProxyP2PTimeout / ProxyP2PError — borrow 端可 fallback stub.
+    """
+    from sisoul.friend.proxy_p2p import (
+        DEFAULT_ROUNDTRIP_TIMEOUT,
+        borrower_roundtrip,
+    )
+
+    r = borrower_roundtrip(
+        borrower_did=borrower_did,
+        lender_did=lender_did,
+        model=model,
+        prompt=prompt,
+        provider=provider,
+        timeout=timeout or DEFAULT_ROUNDTRIP_TIMEOUT,
+    )
+    return {
+        "text": r["text"],
+        "tokens_used": int(r["prompt_tokens"]) + int(r["response_tokens"]),
+        "model_used": r["model_used"],
+        "request_id": r["request_id"],
+    }
+
+
 # ── module singleton (daemon route 用) ────────────────────────────────────────
 
 _GLOBAL_PROXY: Optional[EncryptedProxy] = None
@@ -692,6 +739,7 @@ __all__ = [
     "ProxyDecryptError",
     "ProxyDiskWriteViolation",
     "derive_friend_session_keypair",
+    "proxy_chat_request",
     "proxy_chat_request_async",
     "get_global_proxy",
     "set_global_proxy",

@@ -63,7 +63,15 @@ class OpenAIAdapter(LLMAdapter):
                     "export OPENAI_API_KEY=sk-...",
                     provider="openai",
                 )
-            self._client = openai.OpenAI(api_key=key)
+            # OPENAI_API_BASE / OPENAI_BASE_URL → 自建 / 兼容 endpoint
+            # (lend proxy 场景: lender daemon 把 borrow 转给自己配置的 endpoint)
+            base_url = os.environ.get("OPENAI_API_BASE") or os.environ.get(
+                "OPENAI_BASE_URL"
+            )
+            if base_url:
+                self._client = openai.OpenAI(api_key=key, base_url=base_url)
+            else:
+                self._client = openai.OpenAI(api_key=key)
         return self._client
 
     def chat(self, messages: list[dict], **kwargs) -> str:

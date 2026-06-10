@@ -367,6 +367,23 @@ def _proxy_call(
             amount=amount,
         )
     except Exception as e:
+        # P2P 层失败 (lender 离线 / kubo 没起 / vault 不匹配) → 优雅降级 stub,
+        # 不让 PWA 直接报错; 其他异常仍 raise ProxyError.
+        try:
+            from sisoul.friend.proxy_p2p import ProxyP2PError as _P2PErr
+        except Exception:  # noqa: BLE001
+            _P2PErr = ()  # type: ignore[assignment]
+        if isinstance(e, _P2PErr):
+            return ProxyResult(
+                text=(
+                    f"[stub-passthrough] 真转发未达 lender {lender_did[:24]}… "
+                    f"({type(e).__name__}: {e}); fallback stub. "
+                    f"borrow {amount} {resource_type} via model={model}."
+                ),
+                tokens_used=max(1, amount // 10) if resource_type == "llm_quota" else 1,
+                model_used=model,
+                method="stub-passthrough",
+            )
         raise ProxyError(
             f"dev-B encrypted_proxy raised: {type(e).__name__}: {e}"
         ) from e

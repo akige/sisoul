@@ -33,6 +33,9 @@ def alice_dbs(tmp_path: Path) -> dict[str, str]:
         "own_did": "did:sisoul:alice",
         "friend_db": str(tmp_path / "friends.db"),
         "attest_queue_db": str(tmp_path / "attest.db"),
+        # 密闭: /friend/list 会合并 <vault>/identity/didkey_friends.json,
+        # 不传 vault_dir 会读真 ~/.sisoul (开发机有真好友 → list 测试假失败)
+        "vault_dir": str(tmp_path),
     }
 
 
