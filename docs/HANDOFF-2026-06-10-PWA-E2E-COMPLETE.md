@@ -368,3 +368,32 @@ aws-us-bare main: 07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
 **验收**: pytest 2372 pass 0 fail · vitest 177 pass · PWA audit 14/14 0 error · playwright UI e2e 真见 mock LLM 回复.
 
 **V2EX gate (§十二-8)**: P0 已达成, 发文不再有"截图 stub"反弹风险. 下一批次 = P1 per-request (3-5 天) 或直接走 P2 发文流程.
+
+---
+
+## 十四、Addendum 2026-06-10 下午 (B2 P1 + B3 发文准备 全完成)
+
+**B2 · per-request 真审批全链路** (commit `1a2700c5`):
+- `daemon_events.py` EventBus → `/sisoul/notify/stream` 真 SSE (lend.request / lend.update / borrow.update)
+- lender ingest → SSE 实时推 Lend 页卡片; approve/deny 路由回发 GossipSub ack
+- 借入方 ack loop 落地本地 LendStore 解锁轮询; lender 端 serve 复核审批状态
+- PWA Borrow 加审批模式选择器 ("自动批准" / "等对方批准 120s"), 等待态按钮文案
+- 双页 playwright e2e: Bob 实时收卡 → Approve → Alice 真回复; Deny → Alice 0s 收 "lender-denied|不借"
+
+**B2 顺带修的 4 个深层 bug**:
+1. LendStore 默认路径不认 SISOUL_VAULT (双 daemon 串库)
+2. `_safe_notify` 在 threadpool 跨 event loop 复用 httpx AsyncClient → GossipSub 消息**静默丢** (flaky 根因)
+3. SSE 流 `wait_for(gen.__anext__())` 30s 后打死 generator → ERR_INCOMPLETE_CHUNKED_ENCODING
+4. PWA 8 个文件硬编码 127.0.0.1:9876 (daemon 托管时改同源, 非默认端口/Bob daemon 全修好)
+
+**安全收口** (commit `b389d739`): lender serve gate 加好友校验 — 陌生人 (任意 did) 不能再烧 lender 配额, 反向真测 `denied: borrower is not in lender's friend list`.
+
+**B3 · 发文准备** (commit `26586193`):
+- `docs/TROUBLESHOOTING.md` 中文排错手册 (每条带可复制诊断命令)
+- `docs/HOTFIX-PLAYBOOK.md` 发文后 bug 响应 SOP (分级/复现/验证 gate/回帖模板)
+- V2EX-LAUNCH-POST 补 2 条 2026-06-10 新能力 + 修占位 brew URL + 链接排错手册
+- 帖内 14 外链全验 HTTP 200 (tronscan 403 = bot 防护, 浏览器正常); GH Pages 连续 deploy 绿
+
+**最终验收**: pytest 2372 pass 0 fail · vitest 177 pass · PWA audit 14/14 0 error · 三路 e2e (strong-tie / per-request approve / per-request deny / 陌生人拒) 全真证据.
+
+**发文剩余唯一动作**: 用户把 `docs/V2EX-LAUNCH-POST.md` 发到 V2EX 分享节点.
