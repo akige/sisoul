@@ -118,10 +118,10 @@ def create_app() -> FastAPI:
         borrower_did = "did:key:unknown"
         try:
             from sisoul.identity.seed import load_mnemonic_from_file, mnemonic_to_master_key
-            from sisoul.identity.did_key import did_key_from_master
+            from sisoul.identity.did_key import generate_did_key_from_master
             mnemonic = load_mnemonic_from_file()
             master = mnemonic_to_master_key(mnemonic)
-            borrower_did = did_key_from_master(master, index=0)
+            borrower_did, _priv, _pub = generate_did_key_from_master(master, index=0)
         except Exception as _de:  # noqa: BLE001
             import sys as _sys
             print(f"[borrow/run] borrower did derive failed: {_de}", file=_sys.stderr)
