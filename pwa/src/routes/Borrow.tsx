@@ -105,6 +105,9 @@ interface BorrowInflight {
   stage: BorrowStage;
   error?: string;
   started_at: string;
+  /** lender 真转发回来的 LLM 回复 (encrypted proxy 解密后明文) */
+  proxy_text?: string;
+  proxy_method?: string;
 }
 
 function BorrowForm(props: {
@@ -190,6 +193,8 @@ function BorrowForm(props: {
         stage,
         error: sess.error ?? (resp as any).error ?? undefined,
         started_at: new Date().toISOString(),
+        proxy_text: sess.proxy_text ?? undefined,
+        proxy_method: sess.proxy_method ?? undefined,
       });
     } catch (ex) {
       if (ex instanceof DaemonError) {
@@ -348,6 +353,19 @@ function BorrowProgress(props: { inflight: BorrowInflight }) {
       </div>
       <Show when={it().error}>
         <p class="text-xs text-sisoul-danger font-mono">{it().error}</p>
+      </Show>
+      <Show when={it().proxy_text}>
+        <div
+          class="text-xs text-sisoul-text bg-sisoul-bg border border-sisoul-border rounded p-3 whitespace-pre-wrap"
+          data-testid="borrow-proxy-text"
+        >
+          {it().proxy_text}
+        </div>
+        <Show when={it().proxy_method}>
+          <p class="text-[10px] text-sisoul-muted font-mono">
+            via {it().proxy_method}
+          </p>
+        </Show>
       </Show>
       <p class="text-[10px] text-sisoul-muted font-mono">
         发起 {relativeTime(it().started_at)} · req={it().request_id.slice(0, 12)}

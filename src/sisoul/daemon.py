@@ -293,6 +293,12 @@ def create_app() -> FastAPI:
                 friends = db.list_friends()
             for f in friends:
                 d = f.to_dict() if hasattr(f, "to_dict") else dict(f)
+                # 解历史双前缀残留 (did:sisoul:did:key:… 老 _normalize_did bug),
+                # PWA 拿这种 did 去 borrow 解不出 X25519 pubkey 必失败.
+                _did = str(d.get("did") or "")
+                while _did.startswith("did:sisoul:did:"):
+                    _did = _did[len("did:sisoul:"):]
+                d["did"] = _did
                 d.setdefault("trust_level", 2)
                 d.setdefault("connected_at", d.get("created_at") or "")
                 out.append(d)

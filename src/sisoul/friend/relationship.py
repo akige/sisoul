@@ -227,8 +227,12 @@ def _normalize_did(did_or_handle: str) -> str:
     - alice             → did:sisoul:alice (光 handle)
     """
     s = did_or_handle.strip()
-    if s.startswith("did:sisoul:"):
-        return s
+    # 修复 2026-06-10: 历史 bug 会把完整 did:key:… 再包一层 did:sisoul: →
+    # "did:sisoul:did:key:z6LS…" (PWA 拿这个去 borrow 必失败). 先解残留双前缀.
+    while s.startswith("did:sisoul:did:"):
+        s = s[len("did:sisoul:"):]
+    if s.startswith("did:"):
+        return s  # 已是完整 DID (did:key / did:sisoul / did:web …), 不再包
     if s.endswith(".sisoul.eth"):
         return f"did:sisoul:{s[: -len('.sisoul.eth')]}"
     return f"did:sisoul:{s}"

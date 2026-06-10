@@ -151,8 +151,13 @@ class _FriendOut(BaseModel):
 
 
 def _friend_out(f: Friend) -> _FriendOut:
+    # 解历史双前缀残留 (did:sisoul:did:key:… — 老 _normalize_did bug 写进库的),
+    # 否则 PWA 拿 list 里的 did 去 borrow 解不出 X25519 pubkey 必失败.
+    did = f.did
+    while did.startswith("did:sisoul:did:"):
+        did = did[len("did:sisoul:"):]
     return _FriendOut(
-        did=f.did,
+        did=did,
         handle=f.handle,
         status=f.status,
         strong_tie_score=f.strong_tie_score,
