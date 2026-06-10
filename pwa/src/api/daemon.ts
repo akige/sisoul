@@ -179,9 +179,18 @@ export interface Friend {
 
 export function listFriends(): Promise<{ friends: Friend[] }> {
   // adapter: daemon 返 array, 兜底 {friends: []} 不让 caller `.length` 炸
+  // daemon _FriendOut 真无 trust_level 字段, PWA badge access f.trust_level
+  // 拿 undefined → 'Lundefined' 显示. 这里 trust_level ?? 2 (L2 Query) 兜底,
+  // connected_at ?? created_at 兜底 (PWA formatDate 期望 ISO string).
   return daemonFetch<any>("/friend/list").then((d) => {
     const arr: any[] = Array.isArray(d) ? d : Array.isArray(d?.friends) ? d.friends : [];
-    return { friends: arr };
+    return {
+      friends: arr.map((f) => ({
+        ...f,
+        trust_level: typeof f.trust_level === "number" ? f.trust_level : 2,
+        connected_at: f.connected_at ?? f.created_at ?? "",
+      })),
+    };
   }) as Promise<{ friends: Friend[] }>;
   // legacy direct (kept for ref): return daemonFetch("/friend/list");
 }

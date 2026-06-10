@@ -268,6 +268,57 @@ def create_app() -> FastAPI:
             "request_id": req.request_id,
         }
 
+    @app.get("/sisoul/friend/list", include_in_schema=False)
+    async def _alias_friend_list():
+        """PWA alias 覆盖 friend_router /sisoul/friend/list.
+
+        daemon _FriendOut 真返字段无 trust_level (PWA badge access f.trust_level
+        → undefined → 显示 'Lundefined'). 本 alias 加 trust_level 默认 2
+        (L2 Query, 内测合理默认), 兜底前端 badge 显示 'L2'.
+
+        其他映射:
+        - daemon created_at  → PWA connected_at (PWA formatDate 用)
+        - daemon last_interaction → PWA last_seen_at (ISO 保留)
+
+        合并 didkey_friends.json (alpha install 旧路径) 不丢老朋友.
+        """
+        out = []
+        try:
+            from sisoul.daemon_routes.friend import _rel as _friend_rel
+            from sisoul.friend.relationship import FriendDB
+            rel = _friend_rel(None, None, None, None)
+            with FriendDB(db_path=rel.db_path) as db:
+                friends = db.list_friends()
+            for f in friends:
+                d = f.to_dict() if hasattr(f, "to_dict") else dict(f)
+                d.setdefault("trust_level", 2)
+                d.setdefault("connected_at", d.get("created_at") or "")
+                out.append(d)
+        except Exception as _re:  # noqa: BLE001
+            import sys as _sys
+            print(f"[friend/list alias] friends.db read failed: {_re}",
+                  file=_sys.stderr)
+        # didkey_friends.json (alpha 旧 install 兼容)
+        try:
+            from pathlib import Path as _PP
+            import json as _json
+            import os as _os
+            _vault = _PP(_os.environ.get(
+                "SISOUL_VAULT", str(_PP.home() / ".sisoul"))).expanduser()
+            _didkey_file = _vault / "didkey_friends.json"
+            if _didkey_file.exists():
+                extras = _json.loads(_didkey_file.read_text("utf-8"))
+                seen = {x.get("did") for x in out}
+                for e in extras if isinstance(extras, list) else []:
+                    if e.get("did") and e["did"] not in seen:
+                        e.setdefault("trust_level", 2)
+                        e.setdefault("connected_at",
+                                     e.get("created_at") or "")
+                        out.append(e)
+        except Exception:
+            pass
+        return out
+
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
         """PWA Friends.tsx 用 EventSource (SSE GET) 监听 friend.online /
