@@ -109,10 +109,10 @@ def create_app() -> FastAPI:
         Also fetch Alice's own did (borrower) from daemon /sisoul/did 真路径.
         """
         try:
-            from sisoul.daemon_routes.borrow import _post_borrow, _BorrowRequestBody  # type: ignore
-        except Exception:
+            from sisoul.daemon_routes.friend import _post_borrow, _BorrowRequestBody  # type: ignore
+        except Exception as _ie:
             from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"error": "borrow router 不可用"})
+            return JSONResponse(status_code=500, content={"error": f"borrow router import 失败: {_ie}"})
         # 拿 borrower_did (Alice 自己): 直接 derive from identity, 或读 ~/.sisoul/dna
         borrower_did = ""
         try:
