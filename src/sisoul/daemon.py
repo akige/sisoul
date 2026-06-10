@@ -100,6 +100,41 @@ def create_app() -> FastAPI:
             "total_cost_usd": 0,
         }
 
+    @app.post("/sisoul/borrow/run", include_in_schema=False)
+    async def _alias_borrow_run(body: dict):
+        """PWA alias → /sisoul/borrow. Translate PWA body shape:
+          PWA  {friend_did, provider, model, token_count, reason, emergency_flag}
+          → daemon /borrow {lender_did, borrower_did, resource_type='llm_quota',
+                             amount, model, prompt, emergency_flag, ...}
+        Also fetch Alice's own did (borrower) from daemon /sisoul/did 真路径.
+        """
+        try:
+            from sisoul.daemon_routes.borrow import _post_borrow, _BorrowRequestBody  # type: ignore
+        except Exception:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"error": "borrow router 不可用"})
+        # 拿 borrower_did (Alice 自己): 直接 derive from identity, 或读 ~/.sisoul/dna
+        borrower_did = ""
+        try:
+            from sisoul.identity.seed import load_mnemonic_from_file, mnemonic_to_master_key
+            from sisoul.identity.did import generate_did_key_from_master
+            mnemonic = load_mnemonic_from_file()
+            master = mnemonic_to_master_key(mnemonic)
+            borrower_did, _, _ = generate_did_key_from_master(master, index=0)
+        except Exception:
+            borrower_did = "did:key:unknown"
+        # translate
+        translated = _BorrowRequestBody(
+            borrower_did=borrower_did,
+            lender_did=body.get("friend_did", ""),
+            resource_type="llm_quota",
+            amount=int(body.get("token_count", 0)),
+            model=body.get("model", ""),
+            prompt=body.get("reason", "") or f"借 {body.get('token_count',0)} tokens via PWA",
+            emergency_flag=bool(body.get("emergency_flag", False)),
+        )
+        return await _post_borrow(translated)
+
     @app.get("/sisoul/notify/stream", include_in_schema=False)
     async def _alias_notify_stream():
         """PWA Friends.tsx 用 EventSource (SSE GET) 监听 friend.online /
