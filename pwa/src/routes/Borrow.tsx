@@ -236,7 +236,7 @@ function BorrowForm(props: {
         <input
           type="number"
           min="1"
-          step="100"
+          step="1"
           class="w-full px-3 py-2 bg-sisoul-bg border border-sisoul-border rounded font-mono text-sm text-sisoul-text"
           value={tokenCount()}
           onInput={(e) => setTokenCount(Number(e.currentTarget.value))}
