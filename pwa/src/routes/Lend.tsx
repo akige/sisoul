@@ -315,16 +315,30 @@ function LendContent() {
     maxTokens?: number
   ) => {
     try {
-      const resp = await lendApprove({
+      const resp: any = await lendApprove({
         request_id: req.request_id,
         duration_minutes: durationMin,
         max_tokens: maxTokens,
       });
+      // daemon /lend/approve 真返 {request: {id, status, decided_at,
+      // expires_at: int epoch, ...}}, 不直返 {session_id, expires_at}.
+      // 兜底两种 shape:
+      const inner = resp.request ?? resp;
+      const sid: string =
+        resp.session_id ??
+        inner.session_id ??
+        inner.id ??
+        req.request_id;
+      const expRaw = resp.expires_at ?? inner.expires_at;
+      const expDisplay =
+        typeof expRaw === "number"
+          ? new Date(expRaw * 1000).toISOString()
+          : (expRaw ?? "");
       setLocalRequests((prev) => prev.filter((p) => p.request_id !== req.request_id));
       pushToast(
         "success",
-        `已批准 → session ${resp.session_id.slice(0, 8)}... 至 ${formatDate(
-          resp.expires_at
+        `已批准 → session ${String(sid).slice(0, 8)}... 至 ${formatDate(
+          expDisplay
         )}`
       );
       refetch();
