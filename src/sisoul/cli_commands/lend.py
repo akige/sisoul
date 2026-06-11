@@ -250,3 +250,77 @@ def cmd_auto_status(
     typer.echo(f"  config:    {p}")
     if not p.exists():
         typer.echo("  (config absent — defaults to DISABLED)")
+
+
+# ── lend watch (实时通知, 2026-06-11) ───────────────────────────────────────
+
+
+def _parse_sse_event(block: str) -> tuple[str, dict]:
+    """解析一个 SSE 事件块 (``event: X`` + ``data: {...}``) → (event_type, data_dict)。
+
+    纯函数, 不碰网络, 便于单测。无 event 行默认 'message'; data 非 json 返 {}。
+    """
+    event_type = "message"
+    data_raw = ""
+    for line in block.splitlines():
+        if line.startswith("event:"):
+            event_type = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_raw += line[len("data:"):].strip()
+    try:
+        data = json.loads(data_raw) if data_raw else {}
+    except (ValueError, TypeError):
+        data = {}
+    return event_type, data
+
+
+def _format_lend_request_event(data: dict) -> str:
+    """把一条 lend.request 事件格式化成 lender 可读的一行通知。"""
+    emer = "  🚨EMERGENCY" if data.get("emergency_flag") else ""
+    return (
+        f"📥 有人来借{emer}: req={str(data.get('lend_request_id', '?'))[:12]} "
+        f"from={str(data.get('borrower_did', '?'))[:24]} "
+        f"{data.get('resource_type', '?')} amount={data.get('amount', '?')} "
+        f"model={data.get('model', '?')} mode={data.get('mode', '?')}"
+    )
+
+
+@lend_app.command("watch")
+def cmd_watch(
+    base_url: str = typer.Option("http://127.0.0.1:9876", "--base-url"),
+    once: bool = typer.Option(False, "--once", help="收到第一条事件即退出 (脚本/测试用)"),
+) -> None:
+    """实时盯 borrow 请求 (连 daemon SSE, Ctrl-C 退出)。
+
+    PWA 一直有实时弹窗; 本命令给纯 CLI lender 同样的实时通知 —
+    有人 borrow 立刻打印, 不用反复 `sisoul lend list` 轮询。
+    """
+    import httpx
+
+    url = base_url.rstrip("/") + "/sisoul/notify/stream"
+    typer.echo(f"watching {url} … (Ctrl-C 退出; approve 用 `sisoul lend approve <req>`)")
+    try:
+        with httpx.stream("GET", url, timeout=None) as resp:
+            if resp.status_code != 200:
+                typer.echo(f"连不上 daemon (HTTP {resp.status_code}) — 先 `sisoul daemon`?", err=True)
+                raise typer.Exit(code=1)
+            block = ""
+            for line in resp.iter_lines():
+                if line:
+                    block += line + "\n"
+                    continue
+                if block.strip():
+                    etype, data = _parse_sse_event(block)
+                    block = ""
+                    if etype == "lend.request":
+                        typer.echo(_format_lend_request_event(data))
+                        if once:
+                            return
+                    elif etype in ("lend.update", "borrow.update"):
+                        typer.echo(f"· {etype}: {json.dumps(data, ensure_ascii=False)}")
+                    # heartbeat 静默
+    except KeyboardInterrupt:
+        typer.echo("\nstopped.")
+    except httpx.HTTPError as e:
+        typer.echo(f"SSE 连接错误: {type(e).__name__}: {e} — daemon 在跑吗?", err=True)
+        raise typer.Exit(code=1)

@@ -80,10 +80,26 @@ def _print_borrow_session(s: Any) -> None:  # type: ignore[no-untyped-def]
         typer.echo(f"  tokens used : {s.tokens_used}")
     if s.ledger_entry_id:
         typer.echo(f"  ledger entry: {s.ledger_entry_id}")
+    # M4 支付通道收据 (链上结算消灭跑路风险)
+    pcr = getattr(s, "payment_channel_receipt", None)
+    if pcr and "error" not in pcr:
+        typer.echo(f"  pay channel : cumulative={pcr.get('cumulative_amount')} "
+                   f"(+{pcr.get('this_charge')}) → give receipt to lender to close()")
     if getattr(s, "note", None):
         typer.echo(f"  note        : {s.note}")
     if s.error:
         typer.echo(f"  error       : {s.error}")
+    # 借到后怎么继续用 LLM 的引导 (借成功才提示)
+    if s.status == "completed" and s.resource_type == "llm_quota":
+        typer.echo("")
+        typer.echo("  ✓ 借到了。下一步用 LLM:")
+        typer.echo(f"    · 单次已返回上面 'proxy text' 那段回复")
+        typer.echo(f"    · 持续用 (claude/codex 透明走 TA 的额度):")
+        typer.echo(f"        sisoul borrow proxy {s.lender_did} --model {s.model}")
+        typer.echo(f"      然后把打印的 ANTHROPIC_BASE_URL/OPENAI_BASE_URL 喂给你的工具")
+        typer.echo(f"    · 离线批量 (睡前丢, 醒了收):")
+        typer.echo(f"        sisoul borrow async-submit --lender {s.lender_did} --model {s.model} -p '...'")
+        typer.echo(f"        sisoul borrow async-collect")
 
 
 # ── 子命令 (显式) ───────────────────────────────────────────────────────────
