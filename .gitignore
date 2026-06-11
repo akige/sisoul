@@ -41,3 +41,7 @@ ops/release/.pyinstaller-build.log
 
 # Active plist files contain real secrets (newapi virtual key)
 ops/init/*-active.plist
+
+# foundry build cache
+contracts/cache/
+contracts/broadcast/
