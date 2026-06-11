@@ -214,6 +214,8 @@ class BorrowSession:
     canary_substitution_suspected: bool = False  # 疑似借出方收钱偷用便宜模型
     canary_verdict: Optional[dict] = None  # CanaryVerdict.to dict (probe_id/confidence/reason/...)
     canary_should_stop_lending: bool = False  # 累计嫌疑超阈值 → 建议停止向该 lender 借
+    # M4 支付通道结算层 (2026-06-11) — micropay 走链上状态通道, 消灭跑路风险
+    payment_channel_receipt: Optional[dict] = None  # {channel_id, cumulative_amount, signature_hex, contract}
 
     def __post_init__(self) -> None:
         if not self.session_id:
@@ -658,6 +660,10 @@ def borrow_resource(
     canary_seed: Optional[int] = None,
     canary_tracker: Any = None,
     vault_dir: Optional[str] = None,
+    payment_channel_client: Any = None,
+    payment_channel_id: Optional[bytes] = None,
+    payment_channel_prior_amount: int = 0,
+    payment_channel_price_per_token: float = 0.0,
 ) -> BorrowSession:
     """完整 borrow 流程.
 
@@ -897,6 +903,38 @@ def borrow_resource(
                                     )
                                 except Exception:  # noqa: BLE001
                                     pass
+
+        # 4c. M4 支付通道结算: 借出方按量流式付费时, 借入方签一张递增的 EIP-712
+        # 收据 (cumulative = 历史已付 + 本次 tokens × 单价)。借出方拿最后一张去链上
+        # close 自动 97/3 分账。任一方掉线最多损失 1 个 chunk → 消灭跑路风险。
+        if payment_channel_client is not None and payment_channel_id is not None:
+            try:
+                cost_units = int(
+                    round(session.tokens_used * float(payment_channel_price_per_token))
+                )
+                cumulative = int(payment_channel_prior_amount) + cost_units
+                sig = payment_channel_client.sign_receipt(
+                    channel_id=payment_channel_id,
+                    cumulative_amount=cumulative,
+                )
+                contract = getattr(
+                    payment_channel_client, "contract_address", None
+                )
+                session.payment_channel_receipt = {
+                    "channel_id": payment_channel_id.hex(),
+                    "cumulative_amount": cumulative,
+                    "this_charge": cost_units,
+                    "signature_hex": sig.hex() if isinstance(sig, (bytes, bytearray)) else str(sig),
+                    "contract": contract,
+                    "settlement": (
+                        "give this receipt to the lender; they close() the channel "
+                        "on-chain to settle 97% to lender + 3% protocol fee"
+                    ),
+                }
+            except Exception as _pce:  # noqa: BLE001 — 结算签名失败不回滚已完成的 borrow
+                session.payment_channel_receipt = {
+                    "error": f"{type(_pce).__name__}: {_pce}",
+                }
 
         # 5. ledger 写 (双向写: borrower 本机 borrow + 同机模拟 lender 本机 lend mirror).
         # 真跨机时 borrower 写 borrow; 对端 borrow daemon 调时各自写自己视角.

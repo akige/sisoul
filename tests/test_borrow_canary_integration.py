@@ -185,3 +185,71 @@ class TestCanaryInBorrow:
         # 探针发现是 stub → 放弃抽查, 不标置换不写差评
         assert sess.canary_substitution_suspected is False
         assert load_reviews(vault_dir=vault) == []
+
+
+# ── M4 支付通道结算接进 borrow (2026-06-11) ──────────────────────────────────
+
+
+class _FakeChannelClient:
+    """borrow 集成测试用的假通道客户端: 不上链, 只记录签了什么收据。"""
+
+    def __init__(self) -> None:
+        self.contract_address = "0x" + "ab" * 20
+        self.signed: list[tuple] = []
+
+    def sign_receipt(self, *, channel_id: bytes, cumulative_amount: int) -> bytes:
+        self.signed.append((channel_id, cumulative_amount))
+        return b"\xaa" * 65
+
+
+class TestPaymentChannelInBorrow:
+    def test_borrow_signs_streaming_receipt(
+        self, tmp_db_paths: dict[str, Path]
+    ) -> None:
+        """borrow 完成后真调通道客户端签按量计费的递增收据。"""
+        set_mock_proxy(_honest_lender_proxy)
+        client = _FakeChannelClient()
+        chan = b"\x11" * 32
+        sess = borrow_resource(
+            "alice.eth", "bob.eth", "llm_quota", 1000, "claude-opus-4-7",
+            prompt="hi",
+            force_mode="strong-tie-auto",
+            lend_db=tmp_db_paths["lend"],
+            pending_file=tmp_db_paths["pending"],
+            ledger_db=tmp_db_paths["ledger"],
+            enqueue_onchain=False,
+            payment_channel_client=client,
+            payment_channel_id=chan,
+            payment_channel_prior_amount=500,   # 之前已累计付 500
+            payment_channel_price_per_token=2.0,  # 每 token 2 单位
+        )
+        assert sess.status == "completed"
+        # tokens_used=20 (mock) × 2 = 40; cumulative = 500 + 40 = 540
+        assert len(client.signed) == 1
+        signed_chan, signed_cum = client.signed[0]
+        assert signed_chan == chan
+        assert signed_cum == 540
+        r = sess.payment_channel_receipt
+        assert r is not None and "error" not in r
+        assert r["channel_id"] == chan.hex()
+        assert r["cumulative_amount"] == 540
+        assert r["this_charge"] == 40
+        assert r["signature_hex"] == ("aa" * 65)
+        assert r["contract"] == client.contract_address
+
+    def test_no_channel_client_no_receipt(
+        self, tmp_db_paths: dict[str, Path]
+    ) -> None:
+        """不提供通道客户端 → borrow 行为不变, 无收据。"""
+        set_mock_proxy(_honest_lender_proxy)
+        sess = borrow_resource(
+            "alice.eth", "bob.eth", "llm_quota", 100, "claude-opus-4-7",
+            prompt="hi",
+            force_mode="strong-tie-auto",
+            lend_db=tmp_db_paths["lend"],
+            pending_file=tmp_db_paths["pending"],
+            ledger_db=tmp_db_paths["ledger"],
+            enqueue_onchain=False,
+        )
+        assert sess.status == "completed"
+        assert sess.payment_channel_receipt is None
