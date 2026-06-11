@@ -208,6 +208,12 @@ class BorrowSession:
     usdt_cost: float = 0.0  # only set when incentive_mode == "micropay"
     usdt_payout_address: str = ""  # only set when incentive_mode == "micropay"
     incentive_receipt: dict = field(default_factory=dict)
+    # canary 抽查层 (M3, 2026-06-11) — 借入方按概率混探针检测模型置换
+    canary_checked: bool = False  # 本次 borrow 是否抽了探针
+    canary_passed: Optional[bool] = None  # None=没抽; True=未发现置换; False=疑似置换
+    canary_substitution_suspected: bool = False  # 疑似借出方收钱偷用便宜模型
+    canary_verdict: Optional[dict] = None  # CanaryVerdict.to dict (probe_id/confidence/reason/...)
+    canary_should_stop_lending: bool = False  # 累计嫌疑超阈值 → 建议停止向该 lender 借
 
     def __post_init__(self) -> None:
         if not self.session_id:
@@ -513,6 +519,122 @@ def _enforce_kudos(
         ks.close()
 
 
+# ── canary 抽查 (M3, 2026-06-11): 接进 borrow 主流程 ──────────────────────────
+#
+# 借出方可能"收 claude 的钱偷偷用便宜模型回"。借入方在正常 borrow 里按低概率
+# 额外发一个指纹探针请求 (问 claude/gpt 特有的自我标识/行为问题), 比对响应特征。
+# 命中置换 → 累计嫌疑 + 写差评 (降信誉) + 标记 session。软检测, 有假阴性。
+
+# 进程级 tracker: 累计同一 lender 的历次 canary 结果 (跨 borrow 调用)。
+_CANARY_TRACKER: Any = None
+_CANARY_REQUEST_COUNT: int = 0
+
+
+def _get_canary_tracker() -> Any:
+    """惰性建进程级 CanaryTracker (canary 模块缺失则返 None)。"""
+    global _CANARY_TRACKER
+    if _CANARY_TRACKER is None:
+        try:
+            from sisoul.friend.canary import CanaryTracker
+        except Exception:  # noqa: BLE001 — canary 缺失绝不阻塞 borrow
+            return None
+        _CANARY_TRACKER = CanaryTracker()
+    return _CANARY_TRACKER
+
+
+def _reset_canary_for_test(tracker: Any = None) -> None:
+    """测试钩子: 重置/注入进程级 tracker + 请求计数。"""
+    global _CANARY_TRACKER, _CANARY_REQUEST_COUNT
+    _CANARY_TRACKER = tracker
+    _CANARY_REQUEST_COUNT = 0
+
+
+def _model_family(model: str) -> Optional[str]:
+    """从具体型号推模型族 (canary 探针按族选)。认不出返 None → 不抽。"""
+    m = (model or "").lower()
+    if "claude" in m or "anthropic" in m:
+        return "claude"
+    if "gpt" in m or m.startswith("o1") or m.startswith("o3") or "openai" in m:
+        return "gpt"
+    return None
+
+
+def _run_canary_probe(
+    *,
+    borrower_did: str,
+    lender_did: str,
+    model: str,
+    provider: str,
+    lend_request_id: Optional[str],
+    rng_seed: int,
+    tracker: Any,
+    vault_dir: Optional[str] = None,
+) -> Optional[dict]:
+    """额外发一个探针请求, 检测模型置换。返回 verdict dict 或 None (没抽/认不出族)。
+
+    探针走跟正常 borrow 同样的 _proxy_call (真转发路径), 让借出方无法区分探针与
+    正常请求。命中置换嫌疑超阈值 → 写一条低分 Review 进信誉系统。
+    """
+    family = _model_family(model)
+    if family is None:
+        return None
+    try:
+        from sisoul.friend.canary import pick_probe, evaluate_response, to_review
+        from sisoul.friend.reputation import save_review
+    except Exception:  # noqa: BLE001
+        return None
+
+    try:
+        probe = pick_probe(family, rng_seed)
+    except Exception:  # noqa: BLE001 — 该族无内置探针
+        return None
+
+    # 发探针 (失败/降级 stub 则放弃本次抽查, 不污染信誉)
+    try:
+        pr = _proxy_call(
+            borrower_did=borrower_did,
+            lender_did=lender_did,
+            resource_type="llm_quota",
+            amount=64,
+            model=model,
+            prompt=probe.prompt,
+            mode="strong-tie-auto",
+            lend_request_id=lend_request_id,
+            provider=provider,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if pr.method == "stub-passthrough":
+        return None  # 没真转发, 探针无意义
+
+    verdict = evaluate_response(probe, pr.text)
+    if tracker is not None:
+        tracker.record(lender_did, verdict)
+
+    # 置换确证 → 写差评 (锚定本次 settlement = lend_request_id)
+    if verdict.substitution_suspected:
+        try:
+            review = to_review(
+                lender_did=lender_did,
+                borrower_did=borrower_did,
+                settlement_ref=lend_request_id or "",
+                tracker=tracker,
+                timestamp=int(time.time()),
+            )
+            save_review(review, vault_dir=vault_dir)
+        except Exception:  # noqa: BLE001 — 写差评失败不影响主流程返回
+            pass
+
+    return verdict.to_dict() if hasattr(verdict, "to_dict") else {
+        "probe_id": verdict.probe_id,
+        "passed": verdict.passed,
+        "confidence": verdict.confidence,
+        "reason": verdict.reason,
+        "detected_markers": verdict.detected_markers,
+        "substitution_suspected": verdict.substitution_suspected,
+    }
+
+
 def borrow_resource(
     borrower_did: str,
     lender_did: str,
@@ -532,6 +654,10 @@ def borrow_resource(
     perms_dir: Optional[Path] = None,
     dry_run: bool = False,
     kudos_store_path: Optional[Path] = None,
+    canary_rate: Optional[float] = None,
+    canary_seed: Optional[int] = None,
+    canary_tracker: Any = None,
+    vault_dir: Optional[str] = None,
 ) -> BorrowSession:
     """完整 borrow 流程.
 
@@ -722,6 +848,55 @@ def borrow_resource(
             session.tokens_used = pr.tokens_used or amount
         else:
             session.tokens_used = 1
+
+        # 4b. canary 抽查 (M3): 按概率额外发探针检测模型置换。只在真转发 +
+        # llm_quota 时有意义 (stub 路径 _run_canary_probe 内部会自行跳过)。
+        global _CANARY_REQUEST_COUNT
+        if resource_type == "llm_quota" and not dry_run:
+            import os as _os
+            rate = (
+                canary_rate
+                if canary_rate is not None
+                else float(_os.environ.get("SISOUL_CANARY_RATE", "0.0") or 0.0)
+            )
+            if rate > 0.0:
+                try:
+                    from sisoul.friend.canary import should_inject as _should_inject
+                except Exception:  # noqa: BLE001
+                    _should_inject = None  # type: ignore[assignment]
+                if _should_inject is not None:
+                    _CANARY_REQUEST_COUNT += 1
+                    seed = (
+                        canary_seed
+                        if canary_seed is not None
+                        else uuid.uuid4().int & ((1 << 63) - 1)
+                    )
+                    if _should_inject(_CANARY_REQUEST_COUNT, rate, seed):
+                        tracker = canary_tracker or _get_canary_tracker()
+                        verdict = _run_canary_probe(
+                            borrower_did=borrower_did,
+                            lender_did=lender_did,
+                            model=model,
+                            provider=provider,
+                            lend_request_id=req.id,
+                            rng_seed=seed,
+                            tracker=tracker,
+                            vault_dir=vault_dir,
+                        )
+                        if verdict is not None:
+                            session.canary_checked = True
+                            session.canary_verdict = verdict
+                            session.canary_passed = bool(verdict.get("passed"))
+                            session.canary_substitution_suspected = bool(
+                                verdict.get("substitution_suspected")
+                            )
+                            if tracker is not None:
+                                try:
+                                    session.canary_should_stop_lending = (
+                                        tracker.should_stop_lending(lender_did)
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    pass
 
         # 5. ledger 写 (双向写: borrower 本机 borrow + 同机模拟 lender 本机 lend mirror).
         # 真跨机时 borrower 写 borrow; 对端 borrow daemon 调时各自写自己视角.
