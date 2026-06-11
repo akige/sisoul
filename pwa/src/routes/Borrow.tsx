@@ -26,10 +26,12 @@ import {
   borrowRun,
   borrowProxyList,
   borrowProxyStop,
+  marketOffers,
   notifyStream,
   type Friend,
   type BorrowStage,
   type ProxySessionItem,
+  type MarketOffer,
   type NotifyEvent,
   type NotifyStreamHandle,
   DaemonError,
@@ -129,6 +131,30 @@ function BorrowForm(props: {
   const [submitting, setSubmitting] = createSignal(false);
   const [err, setErr] = createSignal<string | null>(null);
 
+  // M2 市场: 自动选最优 lender vs 手动选朋友
+  const [marketMode, setMarketMode] = createSignal(false);
+  // 选中的 market offer (lender_did)。默认 offers[0]
+  const [selectedLender, setSelectedLender] = createSignal<string>("");
+
+  // 自动模式下按 model fetch 市场 offers (不限价)
+  const [offersRes] = createResource(
+    () => (marketMode() ? model() : null),
+    (m: string) => marketOffers(m)
+  );
+  const offers = createMemo<MarketOffer[]>(() => offersRes()?.offers ?? []);
+
+  // offers 到货后默认选中最优 (offers[0]); 若当前选中不在列表里也重置
+  createEffect(() => {
+    const list = offers();
+    if (list.length === 0) {
+      setSelectedLender("");
+      return;
+    }
+    if (!list.some((o) => o.lender_did === selectedLender())) {
+      setSelectedLender(list[0].lender_did);
+    }
+  });
+
   // provider 切换时 reset model
   createEffect(() => {
     const list = MODELS_BY_PROVIDER[provider()] ?? [];
@@ -140,8 +166,10 @@ function BorrowForm(props: {
   const submit = async (e: Event) => {
     e.preventDefault();
     setErr(null);
-    if (!friendDid()) {
-      setErr("请选朋友");
+    // 自动模式: 用选中 offer 的 lender_did; 手动模式: 用朋友下拉
+    const targetDid = marketMode() ? selectedLender() : friendDid();
+    if (!targetDid) {
+      setErr(marketMode() ? "市场暂无可选 lender" : "请选朋友");
       return;
     }
     if (tokenCount() <= 0) {
@@ -149,10 +177,10 @@ function BorrowForm(props: {
       return;
     }
     setSubmitting(true);
-    const friend = props.friends.find((f) => f.did === friendDid());
+    const friend = props.friends.find((f) => f.did === targetDid);
     try {
       const resp = await borrowRun({
-        friend_did: friendDid(),
+        friend_did: targetDid,
         provider: provider(),
         model: model(),
         token_count: tokenCount(),
@@ -189,7 +217,7 @@ function BorrowForm(props: {
         `bs_${Date.now()}`;
       props.onSubmitted({
         request_id: reqId,
-        friend_did: friendDid(),
+        friend_did: targetDid,
         friend_handle: friend?.handle,
         provider: provider(),
         model: model(),
@@ -219,23 +247,122 @@ function BorrowForm(props: {
     >
       <h3 class="text-sm font-semibold text-sisoul-text">主动借</h3>
 
-      <label class="block space-y-1">
-        <span class="text-xs text-sisoul-muted font-mono">朋友</span>
-        <select
-          class="w-full px-3 py-2 bg-sisoul-bg border border-sisoul-border rounded font-mono text-sm text-sisoul-text"
-          value={friendDid()}
-          onChange={(e) => setFriendDid(e.currentTarget.value)}
-          data-testid="borrow-friend-select"
+      {/* M2 市场: 自动选最优 lender vs 手动选朋友 切换 */}
+      <div
+        class="flex items-center gap-2 text-xs font-mono"
+        data-testid="market-mode-toggle"
+        role="tablist"
+      >
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded border"
+          classList={{
+            "bg-sisoul-accent text-sisoul-bg border-sisoul-accent": marketMode(),
+            "bg-sisoul-bg text-sisoul-muted border-sisoul-border": !marketMode(),
+          }}
+          aria-pressed={marketMode()}
+          onClick={() => setMarketMode(true)}
+          data-testid="market-mode-auto"
         >
-          <For each={props.friends}>
-            {(f) => (
-              <option value={f.did}>
-                {f.handle ?? truncateDid(f.did)} (L{f.trust_level})
-              </option>
-            )}
-          </For>
-        </select>
-      </label>
+          自动选最优 lender (市场)
+        </button>
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded border"
+          classList={{
+            "bg-sisoul-accent text-sisoul-bg border-sisoul-accent": !marketMode(),
+            "bg-sisoul-bg text-sisoul-muted border-sisoul-border": marketMode(),
+          }}
+          aria-pressed={!marketMode()}
+          onClick={() => setMarketMode(false)}
+          data-testid="market-mode-manual"
+        >
+          手动选朋友
+        </button>
+      </div>
+
+      <Show
+        when={!marketMode()}
+        fallback={
+          <div class="block space-y-2">
+            <span class="text-xs text-sisoul-muted font-mono">
+              市场候选 lender (按 价格×信誉×在线率 排序, 默认选最优)
+            </span>
+            <Show
+              when={!offersRes.loading}
+              fallback={
+                <p class="text-xs text-sisoul-muted font-mono py-2">
+                  加载市场 offers...
+                </p>
+              }
+            >
+              <Show
+                when={offers().length > 0}
+                fallback={
+                  <p
+                    class="text-xs text-sisoul-muted font-mono py-3 px-2 border border-sisoul-border rounded bg-sisoul-bg"
+                    data-testid="market-empty"
+                  >
+                    市场暂无可用 lender,可手动选朋友或稍后重试
+                  </p>
+                }
+              >
+                <ul class="space-y-2" data-testid="market-offers-list">
+                  <For each={offers()}>
+                    {(o) => (
+                      <li
+                        class="border rounded-md p-3 text-xs font-mono cursor-pointer space-y-1"
+                        classList={{
+                          "border-sisoul-accent bg-sisoul-accent/10":
+                            o.lender_did === selectedLender(),
+                          "border-sisoul-border bg-sisoul-bg":
+                            o.lender_did !== selectedLender(),
+                        }}
+                        data-testid="market-offer-row"
+                        data-lender-did={o.lender_did}
+                        data-selected={o.lender_did === selectedLender()}
+                        onClick={() => setSelectedLender(o.lender_did)}
+                      >
+                        <div class="flex items-center justify-between">
+                          <span class="text-sisoul-text">
+                            {truncateDid(o.lender_did)}
+                          </span>
+                          <span class="text-sisoul-accent">
+                            ${o.price_usdt_per_1k}/1k
+                          </span>
+                        </div>
+                        <p class="text-sisoul-muted">
+                          信誉 {o.reputation} · 在线率{" "}
+                          {Math.round((o.uptime ?? 0) * 100)}%
+                          <Show when={o.note}> · {o.note}</Show>
+                        </p>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </Show>
+          </div>
+        }
+      >
+        <label class="block space-y-1">
+          <span class="text-xs text-sisoul-muted font-mono">朋友</span>
+          <select
+            class="w-full px-3 py-2 bg-sisoul-bg border border-sisoul-border rounded font-mono text-sm text-sisoul-text"
+            value={friendDid()}
+            onChange={(e) => setFriendDid(e.currentTarget.value)}
+            data-testid="borrow-friend-select"
+          >
+            <For each={props.friends}>
+              {(f) => (
+                <option value={f.did}>
+                  {f.handle ?? truncateDid(f.did)} (L{f.trust_level})
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
+      </Show>
 
       <div class="grid grid-cols-2 gap-3">
         <label class="block space-y-1">
@@ -329,7 +456,12 @@ function BorrowForm(props: {
       <button
         type="submit"
         class="w-full px-3 py-2 text-sm font-mono rounded bg-sisoul-accent text-sisoul-bg hover:bg-sisoul-accent/80 disabled:opacity-50"
-        disabled={submitting() || props.friends.length === 0}
+        disabled={
+          submitting() ||
+          (marketMode()
+            ? offers().length === 0
+            : props.friends.length === 0)
+        }
         data-testid="borrow-submit"
       >
         {submitting()

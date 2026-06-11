@@ -231,6 +231,87 @@ describe("stage progress helper (re-impl matching Borrow.tsx)", () => {
   });
 });
 
+describe("marketOffers (mocked fetch · M2)", () => {
+  it("GET /market/offers?model= returns sorted offers", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: "claude-sonnet-4-6",
+        count: 2,
+        offers: [
+          {
+            lender_did: "did:key:z6MkBest",
+            models: ["claude-sonnet-4-6"],
+            price_usdt_per_1k: 0.01,
+            mode: "strong-tie-auto",
+            daily_cap_tokens: 100000,
+            note: "fast",
+            issued_at: "2026-06-10T00:00:00Z",
+            score: 0.99,
+            reputation: 5,
+            uptime: 0.98,
+          },
+          {
+            lender_did: "did:key:z6MkOther",
+            models: ["claude-sonnet-4-6"],
+            price_usdt_per_1k: 0.02,
+            mode: "per-request",
+            daily_cap_tokens: 50000,
+            issued_at: "2026-06-10T00:00:00Z",
+            score: 0.5,
+            reputation: 3,
+            uptime: 0.9,
+          },
+        ],
+      }),
+    });
+    const { marketOffers } = await import("../../src/api/daemon");
+    const resp = await marketOffers("claude-sonnet-4-6");
+    expect(resp.count).toBe(2);
+    expect(resp.offers[0].lender_did).toBe("did:key:z6MkBest");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/sisoul/market/offers?model=claude-sonnet-4-6",
+      expect.any(Object)
+    );
+  });
+
+  it("passes max_price when provided", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ model: "gpt-5", count: 0, offers: [] }),
+    });
+    const { marketOffers } = await import("../../src/api/daemon");
+    const resp = await marketOffers("gpt-5", 0.05);
+    expect(resp.offers).toHaveLength(0);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/sisoul/market/offers?model=gpt-5&max_price=0.05",
+      expect.any(Object)
+    );
+  });
+
+  it("handles empty offers gracefully (no crash)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ model: "x", count: 0, offers: [] }),
+    });
+    const { marketOffers } = await import("../../src/api/daemon");
+    const resp = await marketOffers("x");
+    expect(resp.offers).toEqual([]);
+    expect(resp.count).toBe(0);
+  });
+
+  it("tolerates missing offers field (adapter fallback)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ model: "x" }),
+    });
+    const { marketOffers } = await import("../../src/api/daemon");
+    const resp = await marketOffers("x");
+    expect(resp.offers).toEqual([]);
+    expect(resp.count).toBe(0);
+  });
+});
+
 describe("addFriend (mocked fetch)", () => {
   it("returns verified=true friend", async () => {
     mockFetch.mockResolvedValueOnce({

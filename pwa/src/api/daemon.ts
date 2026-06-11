@@ -276,6 +276,45 @@ export function borrowRun(body: BorrowRunRequest): Promise<BorrowRunResponse> {
   });
 }
 
+// ── Market (去中心化市场 · M2) ───────────────────────────────────────────────
+// daemon endpoint:
+//   GET /sisoul/market/offers?model=<m>&max_price=<p>
+//   返回 {model, count, offers:[...]} — offers 已按 price×reputation×uptime 排序,
+//   offers[0] 即最优。max_price 省略 / <0 = 不限价。
+export interface MarketOffer {
+  lender_did: string;
+  models: string[];
+  price_usdt_per_1k: number;
+  mode: string;
+  daily_cap_tokens: number;
+  note?: string;
+  issued_at: string;
+  score: number;
+  reputation: number;
+  uptime: number;
+}
+
+export interface MarketOffersResponse {
+  model: string;
+  count: number;
+  offers: MarketOffer[];
+}
+
+export function marketOffers(
+  model: string,
+  maxPrice?: number
+): Promise<MarketOffersResponse> {
+  const params = new URLSearchParams({ model });
+  if (typeof maxPrice === "number") {
+    params.set("max_price", String(maxPrice));
+  }
+  return daemonFetch<any>(`/market/offers?${params.toString()}`).then((d) => ({
+    model: d?.model ?? model,
+    count: typeof d?.count === "number" ? d.count : (Array.isArray(d?.offers) ? d.offers.length : 0),
+    offers: Array.isArray(d?.offers) ? d.offers : [],
+  }));
+}
+
 export interface ProxySessionItem {
   session_id: string;
   request_id: string;
