@@ -17,9 +17,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -185,6 +187,128 @@ def cmd_proxy_stop(
         typer.echo(json.dumps(sess.to_dict(), ensure_ascii=False, indent=2))
     else:
         typer.echo(f"stopped: {sess.session_id} (status={sess.status})")
+
+
+# ── M5 异步 borrow (睡前丢任务 / 早上收结果) ─────────────────────────────────
+#
+# submit 投递不等结果 (lender 可离线), collect 下次上线收割. 隐私铁律:
+# prompt 明文绝不 echo/log — 只打 task_id; collect 的 text 是用户自己的结果,
+# 打到本人终端 (非日志) 是本功能目的本身.
+
+
+def _resolve_async_transport():
+    """拿真 transport: daemon 注册的 (GossipSub) 优先, 否则起 Kubo transport.
+
+    测试可 monkeypatch 本函数注入 MemoryTransport.
+    """
+    from sisoul.chat.transport import (
+        KuboGossipSubTransport,
+        get_default_transport,
+    )
+
+    t = get_default_transport()
+    if t is not None:
+        return t
+    return KuboGossipSubTransport()
+
+
+@borrow_app.command("async-submit")
+def cmd_async_submit(
+    lender: str = typer.Option(..., "--lender", help="借出方 did:key"),
+    model: str = typer.Option(..., "--model", "-m"),
+    prompt: Optional[List[str]] = typer.Option(
+        None, "--prompt", "-p", help="任务 prompt (可多次; 省略则从 stdin 逐行读)"
+    ),
+    provider: str = typer.Option("openai", "--provider"),
+    mode: str = typer.Option("strong-tie-auto", "--mode"),
+    from_stdin: bool = typer.Option(False, "--stdin", help="强制从 stdin 逐行读 prompt"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """投递异步 borrow 任务 (不等结果). 打印 task_id, lender 可离线."""
+    prompts: list[str] = list(prompt or [])
+    if from_stdin or not prompts:
+        if not sys.stdin.isatty():
+            prompts += [ln.rstrip("\n") for ln in sys.stdin if ln.strip()]
+    if not prompts:
+        typer.echo("无 prompt: 用 --prompt 传 (可多次) 或从 stdin 逐行喂入", err=True)
+        raise typer.Exit(code=1)
+
+    from sisoul.friend.async_task import submit_task
+    from sisoul.friend.proxy_p2p import ProxyP2PError, load_vault_keypair
+
+    try:
+        my_did, _priv, _pub = load_vault_keypair()
+    except ProxyP2PError as e:
+        typer.echo(f"vault 不可用: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    transport = _resolve_async_transport()
+
+    async def _run() -> list[str]:
+        ids: list[str] = []
+        for p in prompts:
+            ids.append(
+                await submit_task(
+                    transport, my_did, lender, model, p,
+                    provider=provider, mode=mode,
+                )
+            )
+        return ids
+
+    try:
+        task_ids = asyncio.run(_run())
+    except ProxyP2PError as e:
+        typer.echo(f"投递失败: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    if json_out:
+        typer.echo(json.dumps({"submitted": len(task_ids), "task_ids": task_ids},
+                              ensure_ascii=False, indent=2))
+    else:
+        typer.echo(f"submitted {len(task_ids)} task(s) to {lender}:")
+        for tid in task_ids:
+            typer.echo(f"  {tid}")
+
+
+@borrow_app.command("async-collect")
+def cmd_async_collect(
+    timeout: float = typer.Option(10.0, "--timeout", help="收割等待秒数"),
+    max_results: Optional[int] = typer.Option(None, "--max", help="收满即返回"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """收割异步 borrow 结果 (Box 解密). 打印 {task_id, status, text}."""
+    from sisoul.friend.async_task import collect_results
+    from sisoul.friend.proxy_p2p import ProxyP2PError, load_vault_keypair
+
+    try:
+        my_did, _priv, _pub = load_vault_keypair()
+    except ProxyP2PError as e:
+        typer.echo(f"vault 不可用: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    transport = _resolve_async_transport()
+
+    results = asyncio.run(
+        collect_results(transport, my_did, timeout=timeout, max_results=max_results)
+    )
+
+    if json_out:
+        typer.echo(json.dumps({"count": len(results), "results": results},
+                              ensure_ascii=False, indent=2))
+        return
+    if not results:
+        typer.echo("无结果 (lender 可能还没处理, 稍后再 collect)")
+        return
+    typer.echo(f"collected {len(results)} result(s):")
+    for r in results:
+        line = f"  {r['task_id']}  status={r['status']}"
+        if r.get("status") == "done":
+            line += f"  text={r.get('text')}"
+        elif r.get("reason"):
+            line += f"  reason={r['reason']}"
+        elif r.get("error_class"):
+            line += f"  error={r['error_class']}"
+        typer.echo(line)
 
 
 # 为 typing 补 Any (避免 typed 顶部漏 import; _print 用 Any 简化)

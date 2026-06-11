@@ -975,6 +975,62 @@ def create_app() -> FastAPI:
 
         _aio.create_task(_boot_lend())
 
+    # ── M5 异步 borrow endpoints (睡前丢任务 / 早上收结果) ─────────────────────
+    # submit 投递不等结果 (lender 可离线), collect 下次上线收割. 复用 daemon 注册
+    # 的 GossipSub transport (set_default_transport), 没有则 MemoryTransport
+    # fallback. did = 本机 vault did (SISOUL_VAULT / ~/.sisoul). prompt 明文不落
+    # log — submit_task / collect_results 内部只走 Box 密文.
+    @app.post("/sisoul/borrow/async/submit", include_in_schema=False)
+    async def _borrow_async_submit(body: dict):
+        from fastapi.responses import JSONResponse
+
+        from sisoul.chat.transport import (
+            get_default_transport,
+            get_shared_memory_transport,
+        )
+        from sisoul.friend.async_task import submit_task
+        from sisoul.friend.proxy_p2p import ProxyP2PError, load_vault_keypair
+
+        lender_did = (body or {}).get("lender_did") or ""
+        model = (body or {}).get("model") or ""
+        provider = (body or {}).get("provider") or "openai"
+        prompt = (body or {}).get("prompt")
+        mode = (body or {}).get("mode") or "strong-tie-auto"
+        if not lender_did or prompt is None:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "lender_did 和 prompt 必填"},
+            )
+        transport = get_default_transport() or get_shared_memory_transport()
+        try:
+            my_did, _priv, _pub = load_vault_keypair()
+            task_id = await submit_task(
+                transport, my_did, lender_did, str(model), str(prompt),
+                provider=str(provider), mode=str(mode),
+            )
+        except ProxyP2PError as e:
+            return JSONResponse(status_code=400, content={"error": str(e)})
+        return {"task_id": task_id}
+
+    @app.get("/sisoul/borrow/async/collect", include_in_schema=False)
+    async def _borrow_async_collect(timeout: float = 10.0):
+        from fastapi.responses import JSONResponse
+
+        from sisoul.chat.transport import (
+            get_default_transport,
+            get_shared_memory_transport,
+        )
+        from sisoul.friend.async_task import collect_results
+        from sisoul.friend.proxy_p2p import ProxyP2PError, load_vault_keypair
+
+        transport = get_default_transport() or get_shared_memory_transport()
+        try:
+            my_did, _priv, _pub = load_vault_keypair()
+            results = await collect_results(transport, my_did, timeout=timeout)
+        except ProxyP2PError as e:
+            return JSONResponse(status_code=400, content={"error": str(e)})
+        return {"results": results}
+
     # ── PWA static mount at /app/ ───────────────────────────────────────────
     # 让 daemon 自己 serve PWA, 避免 GitHub Pages https → http://127.0.0.1
     # mixed content block. 用户访问 http://127.0.0.1:9876/app/ 走 same-origin,
