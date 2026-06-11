@@ -2,3 +2,6 @@ node_modules/
 dist/
 .vite/
 *.log
+
+# playwright runtime artifacts
+test-results/
