@@ -282,7 +282,7 @@ mock-openai 脚本完整内容见 `/tmp/mock-openai.py` (返 stub chat completio
 |---|---|
 | `docs/V2EX-LAUNCH-POST.md` | V2EX 发文 final · mainnet/menubar/install/PWA 全 ✅ |
 | `docs/INSTALL.md` | 装机 SOP · 一行 install + 4 步源码 + borrow/lend 用法 |
-| `docs/HANDOFF-V1.0-STABLE-DEV.md` | 前一份 handoff (2026-06-06, aws-us 给的) |
+| (removed) | 前一份 handoff 已随脱敏清理删除 |
 | **`docs/HANDOFF-2026-06-10-PWA-E2E-COMPLETE.md`** | **本份** (新会话从这读) |
 
 ---

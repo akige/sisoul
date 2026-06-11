@@ -1,6 +1,6 @@
 """sisoul net — 内嵌 kubo / GossipSub P2P 状态 (去中心化传输层).
 
-``sisoul net status`` 是 Gate-2 验收命令 (docs/HANDOFF-V1.0-STABLE-DEV.md §5):
+``sisoul net status`` 是 Gate-2 验收命令:
 显示本机是否跑了内嵌 kubo 节点 + swarm peer 数。
 
 - 在 mac/wsl/win 上: 探测本机 kubo API (127.0.0.1:5001), 显示 peer_id + swarm peer 数。

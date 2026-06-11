@@ -45,3 +45,6 @@ ops/init/*-active.plist
 # foundry build cache
 contracts/cache/
 contracts/broadcast/
+
+# 内部脱敏映射表 (含真实 IP/路径) — 绝不入 repo
+.scrub-replacements.txt

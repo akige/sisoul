@@ -172,7 +172,6 @@ Start here if you're picking up sisoul fresh (whether as a tester or as a new de
 | [docs/GOVERNANCE.md](docs/GOVERNANCE.md) | Three governance layers (PR / RSI / DAO), §4.10 never-token rationale, full funding model + donation address |
 | [docs/FOUNDER-AGENT.md](docs/FOUNDER-AGENT.md) | What `@founder` is, how to summon it, vault layout |
 | [docs/FOUNDER-SECURITY.md](docs/FOUNDER-SECURITY.md) | Audited boundary — what `@founder` **cannot** do (no shell, no env, no exfil) |
-| [docs/NEXT-SESSION-HANDOFF.md](docs/NEXT-SESSION-HANDOFF.md) | If you are a new agent / dev session inheriting this work, this is your starting point. Reading order + V2EX-readiness gates + concrete next-up tasks. |
 | [docs/V2EX-LAUNCH-POST.md](docs/V2EX-LAUNCH-POST.md) | The draft launch post |
 | [docs/whitepaper/sisoul-v1.0-whitepaper.md](docs/whitepaper/sisoul-v1.0-whitepaper.md) | 14-chapter whitepaper (§4.10 never-token, §4.11 never-shutdown) |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Wire protocol spec for third-party implementations |

@@ -1,6 +1,6 @@
 """Host policy — where sisoul may run an embedded P2P (kubo / GossipSub) node.
 
-User red line (``docs/HANDOFF-V1.0-STABLE-DEV.md`` §10.3 + §1):
+User red line (decentralisation policy §10.3 + §1):
 
 > 完全去中心化的 GossipSub 很占内存的话，不要在任何 aws 机器上跑，
 > 只允许在 mac/wsl/win11 上跑。

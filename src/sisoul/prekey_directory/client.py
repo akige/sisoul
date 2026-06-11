@@ -25,10 +25,9 @@ class PrekeyDirectoryError(Exception):
 def _resolve_url() -> str:
     """Resolve the prekey-directory URL the client should hit.
 
-    HISTORY: pre-2026-06-06-evening this defaulted to
-    http://198.51.100.1:8767 (maintainer-hosted aws-us instance) and
-    http://198.51.100.2:8768 (maintainer-hosted aws-hk mirror). Both have been
-    DECOMMISSIONED 2026-06-06 (per project decision to ship v1.0 stable as
+    HISTORY: early alpha briefly defaulted to maintainer-hosted directory
+    instances; all were DECOMMISSIONED 2026-06-06 (per project decision to
+    ship v1.0 stable as
     fully decentralised: kubo+GossipSub for transport, EAS attestation on
     Optimism mainnet for username → did mapping).
 
