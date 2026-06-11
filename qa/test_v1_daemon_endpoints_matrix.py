@@ -44,8 +44,25 @@ def _make_app():
     return create_app()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _isolated_vault(tmp_path_factory):
+    """整个矩阵跑在临时空 vault 上 — 不读真实 ~/.sisoul (好友/proxy session 会污染断言)."""
+    import os
+
+    v = tmp_path_factory.mktemp("qa-vault")
+    for sub in ("preferences", "goals", "chat-history", "identity"):
+        (v / sub).mkdir()
+    old = os.environ.get("SISOUL_VAULT")
+    os.environ["SISOUL_VAULT"] = str(v)
+    yield v
+    if old is None:
+        os.environ.pop("SISOUL_VAULT", None)
+    else:
+        os.environ["SISOUL_VAULT"] = old
+
+
 @pytest.fixture(scope="module")
-def client():
+def client(_isolated_vault):
     """Module-scope TestClient (大部分只读 endpoint 共用)."""
     app = _make_app()
     with TestClient(app, raise_server_exceptions=False) as c:
@@ -1032,6 +1049,16 @@ class TestBorrowProxy:
 
 
 class TestProxy:
+    @pytest.fixture(autouse=True)
+    def _no_global_proxy(self):
+        """daemon startup 会 auto-init EncryptedProxy — no_proxy 用例先清掉再还原."""
+        from sisoul.friend.encrypted_proxy import get_global_proxy, set_global_proxy
+
+        saved = get_global_proxy()
+        set_global_proxy(None)
+        yield
+        set_global_proxy(saved)
+
     def test_get_sessions_200_no_proxy(self, client: TestClient) -> None:
         r = client.get("/sisoul/proxy/sessions")
         assert r.status_code == 200

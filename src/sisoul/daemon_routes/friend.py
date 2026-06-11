@@ -285,7 +285,13 @@ def get_list(
         import json as _json
         from datetime import datetime, timezone
 
-        vd = Path(vault_dir).expanduser() if vault_dir else Path.home() / ".sisoul"
+        import os as _os
+
+        vd = Path(
+            vault_dir
+            or _os.environ.get("SISOUL_VAULT")
+            or (Path.home() / ".sisoul")
+        ).expanduser()
         dk_path = vd / "identity" / "didkey_friends.json"
         if dk_path.exists():
             entries = _json.loads(dk_path.read_text(encoding="utf-8"))

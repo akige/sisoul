@@ -288,7 +288,12 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/sisoul/friend/list", include_in_schema=False)
-    async def _alias_friend_list():
+    async def _alias_friend_list(
+        status: str | None = None,
+        own_did: str | None = None,
+        vault_dir: str | None = None,
+        friend_db: str | None = None,
+    ):
         """PWA alias 覆盖 friend_router /sisoul/friend/list.
 
         daemon _FriendOut 真返字段无 trust_level (PWA badge access f.trust_level
@@ -300,14 +305,21 @@ def create_app() -> FastAPI:
         - daemon last_interaction → PWA last_seen_at (ISO 保留)
 
         合并 didkey_friends.json (alpha install 旧路径) 不丢老朋友.
+        保留原 friend_router 契约: status/own_did/vault_dir/friend_db 参数 + 非法 status 400.
         """
+        from fastapi import HTTPException as _HTTPException
+
+        if status and status not in {"pending", "active", "revoked"}:
+            raise _HTTPException(
+                status_code=400, detail="status 必须 pending/active/revoked"
+            )
         out = []
         try:
             from sisoul.daemon_routes.friend import _rel as _friend_rel
             from sisoul.friend.relationship import FriendDB
-            rel = _friend_rel(None, None, None, None)
+            rel = _friend_rel(own_did, vault_dir, friend_db, None)
             with FriendDB(db_path=rel.db_path) as db:
-                friends = db.list_friends()
+                friends = db.list_friends(status=status)  # type: ignore[arg-type]
             for f in friends:
                 d = f.to_dict() if hasattr(f, "to_dict") else dict(f)
                 # 解历史双前缀残留 (did:sisoul:did:key:… 老 _normalize_did bug),

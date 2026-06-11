@@ -43,8 +43,18 @@ from typing import Any, Iterable, Literal, Optional
 
 # ── 公开常量 ─────────────────────────────────────────────────────────────────
 
-# 默认 friend SQLite cache 路径.
+# 默认 friend SQLite cache 路径 (import 时快照, 仅向后兼容; 运行时取 _default_friend_db()).
 DEFAULT_FRIEND_DB = Path.home() / ".sisoul" / "friends.db"
+
+
+def _default_friend_db() -> Path:
+    """运行时解析默认 friends.db — 尊重 SISOUL_VAULT env (daemon/test 隔离 vault 必须)."""
+    import os as _os
+
+    vault = _os.environ.get("SISOUL_VAULT")
+    if vault:
+        return Path(vault).expanduser() / "friends.db"
+    return DEFAULT_FRIEND_DB
 
 # FRIEND_RELATIONSHIP EAS schema (跟 SISOUL_AUDIT_SCHEMA 并列, 独立 schema_uid).
 # 真上链 schema_uid 由 SchemaRegistry.register() 链上返; mock 用 sha256 占位.
@@ -287,7 +297,7 @@ class FriendDB:
     """
 
     def __init__(self, db_path: Optional[Path | str] = None) -> None:
-        self.db_path = Path(db_path) if db_path else DEFAULT_FRIEND_DB
+        self.db_path = Path(db_path) if db_path else _default_friend_db()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row
@@ -750,7 +760,7 @@ class FriendRelationship:
         attest_queue_db: Optional[Path | str] = None,
     ) -> None:
         self.own_did = _normalize_did(own_did)
-        self.db_path = Path(db_path) if db_path else DEFAULT_FRIEND_DB
+        self.db_path = Path(db_path) if db_path else _default_friend_db()
         self.attest_queue_db = (
             Path(attest_queue_db) if attest_queue_db else None
         )
