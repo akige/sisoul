@@ -46,7 +46,7 @@ def test_wsl_allowed_even_with_microsoft_dmi(monkeypatch):
 
 
 def test_aws_hostname_refused(monkeypatch):
-    _patch_signals(monkeypatch, host="aws-us")
+    _patch_signals(monkeypatch, host="box-a")
     reason = hp.cloud_refusal_reason()
     assert reason is not None and "aws-" in reason
     assert hp.p2p_allowed() is False
@@ -79,7 +79,7 @@ def test_dmi_gcp_refused(monkeypatch):
 
 
 def test_override_allows_cloud(monkeypatch):
-    _patch_signals(monkeypatch, host="aws-us", etc_cloud=True, dmi="amazon ec2")
+    _patch_signals(monkeypatch, host="box-a", etc_cloud=True, dmi="amazon ec2")
     monkeypatch.setenv(hp.ALLOW_CLOUD_P2P_ENV, "1")
     assert hp.cloud_refusal_reason() is None
     assert hp.p2p_allowed() is True
@@ -91,7 +91,7 @@ def test_override_allows_cloud(monkeypatch):
 def test_kubo_subprocess_refused_on_cloud(monkeypatch):
     from sisoul.p2p.ipfs_kubo import IPFSCloudRefused, IPFSKuboNode
 
-    monkeypatch.setattr(hp, "_hostname", lambda: "aws-us")
+    monkeypatch.setattr(hp, "_hostname", lambda: "box-a")
     node = IPFSKuboNode(mode="kubo-subprocess")
     with pytest.raises(IPFSCloudRefused):
         node.start_sync()
@@ -101,7 +101,7 @@ def test_kubo_mock_mode_unaffected_on_cloud(monkeypatch):
     # mock + external-daemon modes don't spawn anything, so the gate must not block them.
     from sisoul.p2p.ipfs_kubo import IPFSKuboNode
 
-    monkeypatch.setattr(hp, "_hostname", lambda: "aws-us")
+    monkeypatch.setattr(hp, "_hostname", lambda: "box-a")
     node = IPFSKuboNode(mode="mock")
     node.start_sync()  # must not raise
     assert node.peer_id is not None

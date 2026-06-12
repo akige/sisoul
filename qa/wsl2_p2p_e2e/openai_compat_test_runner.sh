@@ -11,7 +11,7 @@
 # 前置 (一次性):
 # - WSL 上有 systemd unit sisoul-bob-test.service (从 ops/systemd/).
 # - Win11 上有 sisoul-alice-test.ps1 启动脚本 (从 ops/win11/).
-# - tailnet 互通 (Mac aws-sg ↔ WSL ↔ Win11).
+# - tailnet 互通 (Mac ↔ WSL ↔ Win11).
 #
 # 用:
 #   bash qa/wsl2_p2p_e2e/openai_compat_test_runner.sh

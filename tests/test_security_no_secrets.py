@@ -171,3 +171,49 @@ def test_no_password_assignments():
                     continue
                 matches.append((path.relative_to(REPO), line_num, m.group(0)[:60]))
     assert not matches, f"hardcoded credentials: {matches[:3]}"
+
+
+# [2026-06-12] 内部机器代号 + 内部文档路径红线 (本轮审查发现 scrub 验证 grep 没跑全:
+# HANDOFF 文档曾把 tailnet/公网 IP + 机器代号推上公开 main)
+INTERNAL_HOST_PATTERNS = [
+    r"\baws-(us|hk|sg|jp)(-tail)?\b",
+    r"\bpolaris[0-9]+(-tail)?\b",
+    r"\bpanshi-sim-(prod|stage)\b",
+    r"\bdmit-(jp|us)\b",
+    r"\btx-jp\b",
+    r"\bmihomo-tail\b",
+    r"100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}",  # tailnet CGNAT
+    r"13\.56\.68\.22",  # 曾泄漏的公网 IP
+]
+INTERNAL_DOC_PATHS = ["README-internal.md", "USER-WAKEUP-SUMMARY.md", "docs/internal/"]
+
+
+def test_no_internal_host_names():
+    import re as _re, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    bad = []
+    for f in root.rglob("*"):
+        if f.is_dir() or any(s in str(f) for s in (".git/", "node_modules", ".venv", "__pycache__",
+                                                    "desensitize-blacklist")):  # blacklist yaml 含 pattern 定义本身
+            continue
+        if f.suffix not in (".py", ".md", ".yaml", ".yml", ".toml", ".service", ".sh", ".ts", ".js", ".json"):
+            continue
+        try:
+            text = f.read_text(errors="ignore")
+        except Exception:
+            continue
+        # 文档示例 IP (100.64.0.x = CGNAT 段首, whitepaper 教学示例) 豁免
+        text_x = _re.sub(r"100\.64\.0\.[0-9]{1,3}", "", text)
+        for pat in INTERNAL_HOST_PATTERNS:
+            if _re.search(pat, text_x):
+                bad.append(f"{f.relative_to(root)}: {pat}")
+                break
+    assert not bad, "internal host/IP patterns found: " + "; ".join(bad[:10])
+
+
+def test_no_internal_docs_tracked():
+    import subprocess, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    out = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd=root).stdout
+    bad = [l for l in out.splitlines() if any(p in l for p in INTERNAL_DOC_PATHS)]
+    assert not bad, "internal docs tracked: " + "; ".join(bad[:10])

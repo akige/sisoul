@@ -1,8 +1,8 @@
 """HTTP prekey-directory client used by `sisoul chat send` + `chat rotate-prekey`.
 
 The directory URL comes from the SISOUL_PREKEY_DIRECTORY env var. There is
-**no public default**: the maintainer-hosted public instances (aws-us:8767 /
-aws-hk:8768) were decommissioned 2026-06-06 when v1.0-stable moved to a fully
+**no public default**: the maintainer-hosted public instances were
+decommissioned 2026-06-06 when v1.0-stable moved to a fully
 decentralised path (kubo+GossipSub transport, EAS for username->did). To use the
 legacy HTTP-directory path you must run your own instance and point clients at
 it via SISOUL_PREKEY_DIRECTORY; otherwise these calls intentionally fail fast.

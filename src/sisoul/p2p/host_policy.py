@@ -32,7 +32,7 @@ from pathlib import Path
 ALLOW_CLOUD_P2P_ENV = "SISOUL_ALLOW_CLOUD_P2P"
 
 #: hostname prefixes that mark a cloud / shared box.
-#: (EC2 instance ids start with ``i-``; the user's boxes are ``aws-us`` / ``aws-hk``.)
+#: (EC2 instance ids start with ``i-``.)
 _CLOUD_HOSTNAME_PREFIXES = ("aws-", "aws_", "i-")
 
 #: DMI vendor substrings that mark a cloud VM. Deliberately excludes "microsoft"

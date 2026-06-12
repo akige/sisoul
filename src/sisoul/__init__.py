@@ -13,8 +13,8 @@ __name_full__ = "sisoul"
 __phase__ = "Phase 5 v1.0-internal release"
 
 # Daemon 端口 (Phase 1 W2 ship)
-# 9876 选择理由: Mac 本机 + obs 跨机均空闲, 跟 9890 (backup-status-server) / 9878 (panshi-pro-bt) /
-# 9888 (mac-jobs-overview) / 9892 (swarm-server-1.7) / 9893 (supervisor-1.7) 全不冲突.
+# 9876 选择理由: Mac 本机 + obs 跨机均空闲, 跟 9890 (svc-b) / 9878 (svc-a) /
+# 9888 (svc-c) / 9892 (swarm-server-1.7) / 9893 (supervisor-1.7) 全不冲突.
 DAEMON_HOST = "127.0.0.1"
 DAEMON_PORT = 9876
 DAEMON_BASE_URL = f"http://{DAEMON_HOST}:{DAEMON_PORT}"

@@ -302,7 +302,7 @@ mock-openai 脚本完整内容见 `/tmp/mock-openai.py` (返 stub chat completio
 ```
 HEAD: 07967acee0c19fd4e76531dafd8dfd9e867ffd40
 github main:      07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
-aws-us-bare main: 07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
+internal-bare-remote main: 07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
 ```
 
 今天累计 34 commit (cfb2d647..07967ace), 全部双 push.
@@ -330,7 +330,7 @@ aws-us-bare main: 07967acee0c19fd4e76531dafd8dfd9e867ffd40  ✓ sync
 
 1. **真测真证据** — 每个改动必须 playwright headless 真验证 0 error
 2. **不要"应该修好了"** — 用户极不耐烦, 反复骂这词, 必须真贴 audit 输出
-3. **双 remote push** — github + aws-us-bare 任何 commit 都同步
+3. **双 remote push** — github + internal-bare-remote 任何 commit 都同步
 4. **daemon 重启用 `( nohup ... < /dev/null & )` 子 shell** — 不用 `setsid` (mac 没有), 不用 `pkill -f` regex (\| 在 basic regex 不 alternation)
 5. **PWA 改动后真 rebuild** (`cd pwa && npm run build`) + daemon mount 真 reload 才生效
 6. **mock LLM 在 /tmp/mock-openai.py** — 真路径 alpha 简化, 不真接 Anthropic/OpenAI 防止用户 LLM key 泄露

@@ -20,12 +20,9 @@ patterns:
   - { match: "<internal-notes>", replace: "obsidian-vault" }
 
   # 机器 alias (aws / Polaris)
-  - { match: "aws-(us|hk|sg|jp)-tail", replace: "REDACTED_HOST" }
-  - { match: "polaris[0-9]+(-tail)?", replace: "REDACTED_POLARIS_HOST" }
-  - { match: "panshi-sim-(prod|stage)", replace: "REDACTED_PANSHI_HOST" }
-  - { match: "mihomo-tail", replace: "REDACTED_HOST" }
-  - { match: "dmit-(jp|us)", replace: "REDACTED_VPS" }
-  - { match: "tx-jp", replace: "REDACTED_VPS" }
+  # [2026-06-12] 真实内部主机名 pattern 移入 .private.yaml (不 commit):
+  # pattern 本身就是内部命名地图, 留在公开仓 = 自我泄密
+  - { match: "<internal-host-alias>", replace: "REDACTED_HOST" }
   - { match: "<test-host>", replace: "REDACTED_VPS" }
 
   # Tailscale CGNAT 段 (100.64.0.0/10)
@@ -49,4 +46,4 @@ patterns:
   - { match: "alert\\.internal", replace: "REDACTED_ALERT_API" }
 
   # 真实姓名 (举例 — 用户应该 fork 一份 .private.yaml 加自己的)
-  - { match: "ddvv8848@gmail\\.com", replace: "user@example.com" }
+  - { match: "<maintainer-email>", replace: "user@example.com" }  # 真实值在 .private.yaml

@@ -39,6 +39,6 @@ def test_unknown_endpoint_returns_404() -> None:
 
 
 def test_daemon_port_not_conflicting_with_known_services() -> None:
-    """sanity check: daemon 端口跟已知服务不冲突 (9890 backup / 9878 panshi-pro-bt / 9888 mac-jobs / 9892-9893 vck-supervisor)."""
+    """sanity check: daemon 端口跟已知服务不冲突 (9890 backup / 9878 svc-a / 9888 mac-jobs / 9892-9893 vck-supervisor)."""
     known_taken = {9890, 9878, 9888, 9892, 9893, 7890}
     assert DAEMON_PORT not in known_taken, f"端口 {DAEMON_PORT} 跟已知服务冲突"
