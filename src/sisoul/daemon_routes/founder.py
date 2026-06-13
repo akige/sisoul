@@ -55,6 +55,10 @@ class FounderStatusResponse(BaseModel):
     vault_root: str
     vault_size: dict
     config: dict
+    # Most recent LLM-call failure ({"error", "timestamp"}) — None if no
+    # failure since daemon start. Lets operators see why chat degraded to
+    # retrieval-only mode without grepping logs.
+    last_llm_error: Optional[dict] = None
 
 
 class FounderChatRequest(BaseModel):
@@ -70,6 +74,9 @@ class FounderChatResponse(BaseModel):
     cases_recalled: list[str]
     mode: str
     timestamp: str
+    # Set when an LLM call was attempted but failed (mode degrades to
+    # retrieval-only); None on success or when no adapter configured.
+    llm_error: Optional[str] = None
 
 
 class FounderRecallRequest(BaseModel):

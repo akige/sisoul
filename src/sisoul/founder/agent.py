@@ -1,12 +1,33 @@
 """FounderAgent — orchestrate vault + LLM adapter to produce founder-style answers."""
 from __future__ import annotations
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from sisoul.founder.vault import FounderVault, founder_dir
+
+log = logging.getLogger(__name__)
+
+# Module-level so it survives the per-request FounderAgent instances created by
+# daemon_routes/founder.py — /v1/founder/status can surface the most recent
+# LLM failure even though each request builds a fresh agent.
+_LAST_LLM_ERROR: Optional[dict] = None
+
+
+def _record_llm_error(err: str) -> None:
+    global _LAST_LLM_ERROR
+    _LAST_LLM_ERROR = {
+        "error": err,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def get_last_llm_error() -> Optional[dict]:
+    """Most recent LLM-call failure ({"error", "timestamp"}) or None."""
+    return _LAST_LLM_ERROR
 
 
 @dataclass
@@ -62,7 +83,10 @@ class FounderAgent:
             if provider == "gemini":
                 from sisoul.llm.gemini import GeminiAdapter
                 return GeminiAdapter()
-        except Exception:
+        except Exception as e:
+            err = f"adapter init failed (provider={provider}): {type(e).__name__}: {e}"
+            log.warning("founder-agent %s", err)
+            _record_llm_error(err)
             return None
         return None
 
@@ -106,6 +130,7 @@ class FounderAgent:
         prompt = self.build_prompt(user_question)
         recalled_ids = prompt["cases_recalled"]
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        llm_error: Optional[str] = None
 
         # If caller didn't pass adapter, try to auto-resolve from config.provider
         if adapter is None:
@@ -130,13 +155,21 @@ class FounderAgent:
                     "cases_recalled": recalled_ids,
                     "mode": "llm",
                     "timestamp": timestamp,
+                    "llm_error": None,
                 }
                 if record:
                     self._record_turn(user_question, result)
                 return result
             except Exception as e:
-                # Fall through to retrieval
-                pass
+                # Fall through to retrieval, but keep the failure visible
+                llm_error = f"{type(e).__name__}: {e}"
+                log.warning(
+                    "founder-agent LLM call failed (provider=%s), "
+                    "falling back to retrieval-only: %s",
+                    getattr(adapter, "provider_name", self.config.provider),
+                    llm_error,
+                )
+                _record_llm_error(llm_error)
 
         # Retrieval-only fallback
         recalled = self.vault.recall(user_question, top_k=1)
@@ -154,6 +187,7 @@ class FounderAgent:
             "cases_recalled": cases_recalled,
             "mode": "retrieval-only",
             "timestamp": timestamp,
+            "llm_error": llm_error,
         }
         if record:
             self._record_turn(user_question, result)
@@ -191,7 +225,8 @@ class FounderAgent:
                 "max_recall": self.config.max_recall,
                 "rsi_enabled": self.config.rsi_enabled,
             },
+            "last_llm_error": get_last_llm_error(),
         }
 
 
-__all__ = ["FounderAgent", "FounderConfig", "ChatTurn"]
+__all__ = ["FounderAgent", "FounderConfig", "ChatTurn", "get_last_llm_error"]

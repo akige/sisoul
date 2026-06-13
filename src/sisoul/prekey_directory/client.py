@@ -34,11 +34,18 @@ def _resolve_url() -> str:
     There is intentionally no public default. Set SISOUL_PREKEY_DIRECTORY
     to point at your own self-hosted instance, or omit it entirely once
     the v1.0-stable kubo+EAS code path lands.
+
+    Raises:
+        RuntimeError: env var unset/empty — the directory layer is opt-in, so
+        we fail fast with an actionable message instead of hitting "" + path.
     """
-    return os.environ.get(
-        "SISOUL_PREKEY_DIRECTORY",
-        "",  # no default: tells callers "directory layer is opt-in"
-    ).rstrip("/")
+    url = os.environ.get("SISOUL_PREKEY_DIRECTORY", "").rstrip("/")
+    if not url:
+        raise RuntimeError(
+            "SISOUL_PREKEY_DIRECTORY not set (directory layer retired 2026-06-06; "
+            "self-host and set the env var to opt in)"
+        )
+    return url
 
 
 def publish_my_prekey(did: str, bundle_dict: dict, *,

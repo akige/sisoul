@@ -251,6 +251,9 @@ def _ensure_db(path: Path) -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_notify_ts ON notifications(ts DESC);
             CREATE INDEX IF NOT EXISTS idx_notify_target ON notifications(target_did, ts DESC);
+            -- notify_id 是 PRIMARY KEY (自带 unique 索引); 显式 UNIQUE 索引兜底
+            -- 旧版本建的存量库 (IF NOT EXISTS 对新库无害).
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_notify_id_unique ON notifications(notify_id);
             CREATE TABLE IF NOT EXISTS heartbeats (
                 did TEXT PRIMARY KEY,
                 last_heartbeat_ts REAL NOT NULL
@@ -274,10 +277,11 @@ class NotificationStore:
         self.db_path = Path(db_path) if db_path else _DEFAULT_NOTIFY_DB
         _ensure_db(self.db_path)
 
-    def insert(self, n: Notification) -> None:
+    def insert(self, n: Notification) -> bool:
+        """插入通知. 已存在同 notify_id → 忽略 (UNIQUE 去重), 返 False."""
         with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO notifications "
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO notifications "
                 "(notify_id, kind, source_did, target_did, payload, ts, read, delivered_via) "
                 "VALUES (?,?,?,?,?,?,?,?)",
                 (
@@ -292,6 +296,15 @@ class NotificationStore:
                 ),
             )
             conn.commit()
+            return cur.rowcount > 0
+
+    def exists(self, notify_id: str) -> bool:
+        """O(1) 主键查重 (替代 list_recent 全扫)."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            cur = conn.execute(
+                "SELECT 1 FROM notifications WHERE notify_id=? LIMIT 1", (notify_id,)
+            )
+            return cur.fetchone() is not None
 
     def list_recent(
         self,
