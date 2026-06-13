@@ -16,7 +16,12 @@ from sisoul.p2p.transport import Message
 from sisoul.p2p.waku_transport import (
     DEFAULT_BOOTSTRAP,
     DEFAULT_REST_PORT,
+    DEFAULT_STORE_NODES,
     DEFAULT_STORE_TTL_SEC,
+    ENV_WAKU_BOOTSTRAP,
+    ENV_WAKU_DNS_DISCOVERY_URL,
+    ENV_WAKU_RUN_OWN_STORE,
+    ENV_WAKU_STORE_NODE,
     LIBP2P_PUBSUB_AVAILABLE,
     MAX_WAKU_PAYLOAD_BYTES,
     WakuBinaryNotFound,
@@ -35,6 +40,8 @@ from sisoul.p2p.waku_transport import (
     find_nwaku_binary,
     nwaku_static_download_url,
     parse_content_topic,
+    resolve_bootstrap_nodes,
+    resolve_store_node,
     select_transport_with_waku,
     topic_matches_peer,
 )
@@ -594,6 +601,268 @@ class TestNwakuSubprocess:
                           nwaku_binary=str(fake), startup_timeout_sec=2.0)
         with pytest.raises(WakuDaemonStartTimeout):
             await t.start()
+
+
+class _FakeProc:
+    """可控的假 nwaku 子进程: poll() 返 _alive 决定的退出码."""
+
+    def __init__(self, name: str = "proc"):
+        self.name = name
+        self._alive = True
+        self.returncode = None
+        self.stderr = None
+        self.terminated = False
+
+    def poll(self):
+        return None if self._alive else self.returncode
+
+    def die(self, code: int = 137):
+        self._alive = False
+        self.returncode = code
+
+    def terminate(self):
+        self.terminated = True
+        self.die(0)
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.die(-9)
+
+
+class TestWatchdogRestart:
+    """#5: nwaku 子进程 watchdog — crash 自动重启 + 重放订阅."""
+
+    @pytest.mark.asyncio
+    async def test_watchdog_restarts_dead_proc_and_resubscribes(self):
+        """子进程 crash → watchdog 重启 + re-POST 订阅. restart_count++."""
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            watchdog_interval_sec=0.05, watchdog_max_restarts=5,
+        )
+        # 模拟已 start 状态 (跳过真 spawn): 装一个活着的 fake proc + 一些订阅.
+        t._started = True
+        t._mode = "nwaku-subprocess"
+        first_proc = _FakeProc("p1")
+        t._proc = first_proc
+        t._http = MagicMock()
+        topic = build_content_topic(SAMPLE_DID_ALICE, SAMPLE_DID_BOB, "borrow")
+        t._subscribed_topics = {topic}
+
+        resub_calls: list[str] = []
+
+        async def fake_resubscribe():
+            resub_calls.extend(t._subscribed_topics)
+
+        # 重启时换上新的活 proc (模拟 _spawn_and_wait_nwaku 成功).
+        new_proc = _FakeProc("p2")
+
+        async def fake_spawn():
+            t._proc = new_proc
+
+        with patch.object(t, "_spawn_and_wait_nwaku", new=fake_spawn), \
+             patch.object(t, "_resubscribe_all", new=fake_resubscribe), \
+             patch.object(t, "_kill_proc", new=AsyncMock()):
+            wd = asyncio.create_task(t._watchdog_loop())
+            # 先确认稳态不重启
+            await asyncio.sleep(0.15)
+            assert t.restart_count == 0
+            # 杀掉进程 → watchdog 下一轮应重启
+            first_proc.die(137)
+            # 等到重启发生 (轮询 restart_count)
+            for _ in range(40):
+                await asyncio.sleep(0.05)
+                if t.restart_count >= 1:
+                    break
+            t._stopping = True
+            wd.cancel()
+            await asyncio.gather(wd, return_exceptions=True)
+
+        assert t.restart_count == 1, "watchdog 应重启 1 次"
+        assert t._proc is new_proc, "重启后应换上新 proc"
+        assert topic in resub_calls, "重启后应重放订阅"
+
+    @pytest.mark.asyncio
+    async def test_watchdog_respects_max_restarts(self):
+        """连续 crash 超过 max_restarts → watchdog 放弃 (不无限重启)."""
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            watchdog_interval_sec=0.02, watchdog_max_restarts=3,
+            watchdog_restart_backoff_sec=0.01,
+        )
+        t._started = True
+        t._mode = "nwaku-subprocess"
+        t._proc = _FakeProc("dead")
+        t._proc.die(1)  # 一开始就死
+        t._http = MagicMock()
+
+        # 每次"重启"都立刻又死 → 必撞 max_restarts 上限
+        async def fake_spawn():
+            p = _FakeProc("restarted")
+            p.die(1)
+            t._proc = p
+
+        with patch.object(t, "_spawn_and_wait_nwaku", new=fake_spawn), \
+             patch.object(t, "_resubscribe_all", new=AsyncMock()), \
+             patch.object(t, "_kill_proc", new=AsyncMock()):
+            await asyncio.wait_for(t._watchdog_loop(), timeout=5.0)
+
+        # 放弃后 restart_count 恰好等于上限 (不超)
+        assert t.restart_count == 3
+
+    @pytest.mark.asyncio
+    async def test_watchdog_no_restart_when_stopping(self):
+        """stop() 期间 (_stopping=True) 进程死了也不重启."""
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            watchdog_interval_sec=0.02,
+        )
+        t._started = True
+        t._mode = "nwaku-subprocess"
+        dead = _FakeProc("dead")
+        dead.die(0)
+        t._proc = dead
+        t._stopping = True  # 模拟正在 shutdown
+
+        spawn = AsyncMock()
+        with patch.object(t, "_spawn_and_wait_nwaku", new=spawn):
+            # watchdog 应立刻返回 (stopping), 不调 spawn
+            await asyncio.wait_for(t._watchdog_loop(), timeout=2.0)
+        spawn.assert_not_called()
+        assert t.restart_count == 0
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_watchdog(self):
+        """stop() 取消 watchdog task 且不卡死."""
+        t = WakuTransport("alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess")
+        t._started = True
+        t._mode = "nwaku-subprocess"
+        t._proc = _FakeProc("alive")
+        t._http = AsyncMock()
+        # 手动挂一个 watchdog
+        t._watchdog_task = asyncio.create_task(t._watchdog_loop())
+        await asyncio.sleep(0.05)
+        with patch.object(t, "_kill_proc", new=AsyncMock()):
+            await t.stop()
+        assert t._watchdog_task is None
+        assert t._started is False
+        assert t._stopping is False
+
+    @pytest.mark.asyncio
+    async def test_watchdog_disabled_no_task(self, tmp_path):
+        """watchdog_enabled=False → start 后不挂 watchdog task."""
+        fake = tmp_path / "nwaku"
+        fake.write_text("#!/bin/sh\nexit 0\n")
+        fake.chmod(0o755)
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="mock",
+            watchdog_enabled=False,
+        )
+        await t.start()  # mock 模式不挂 watchdog 本来就不挂, 但确认 flag 路径
+        assert t._watchdog_task is None
+        await t.stop()
+
+    @pytest.mark.asyncio
+    async def test_resubscribe_all_posts_each_topic(self):
+        """_resubscribe_all 对每个已订阅 topic POST 一次 filter subscription."""
+        t = WakuTransport("alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+                          external_rest_url=None)
+        t._rest_port = 8645
+        topic1 = build_content_topic(SAMPLE_DID_ALICE, SAMPLE_DID_BOB, "borrow")
+        topic2 = build_content_topic(SAMPLE_DID_ALICE, SAMPLE_DID_BOB, "heartbeat")
+        t._subscribed_topics = {topic1, topic2}
+
+        post_mock = AsyncMock(return_value=MagicMock(raise_for_status=lambda: None))
+        t._http = MagicMock()
+        t._http.post = post_mock
+        await t._resubscribe_all()
+        assert post_mock.call_count == 2
+        posted_filters = [
+            c.kwargs["json"]["contentFilters"][0] for c in post_mock.call_args_list
+        ]
+        assert set(posted_filters) == {topic1, topic2}
+
+
+class TestFleetDecentralization:
+    """#4: fleet 去中心化 — 可配置 bootstrap/store + ENR DNS discovery + 自跑 store.
+
+    硬约束: 默认 (无参数/env) 行为与改动前完全一致, 现有 status.im fleet 仍工作.
+    """
+
+    def test_resolve_bootstrap_default_is_status_im(self, monkeypatch):
+        monkeypatch.delenv(ENV_WAKU_BOOTSTRAP, raising=False)
+        assert resolve_bootstrap_nodes() == list(DEFAULT_BOOTSTRAP)
+
+    def test_resolve_bootstrap_explicit_wins(self, monkeypatch):
+        monkeypatch.setenv(ENV_WAKU_BOOTSTRAP, "/dns4/env-node/tcp/1/p2p/16Uiu2EnvX")
+        custom = ["/dns4/explicit/tcp/2/p2p/16Uiu2Explicit"]
+        assert resolve_bootstrap_nodes(custom) == custom  # 显式 > env
+
+    def test_resolve_bootstrap_env_override(self, monkeypatch):
+        monkeypatch.setenv(
+            ENV_WAKU_BOOTSTRAP,
+            "/dns4/a/tcp/1/p2p/16Uiu2A, /dns4/b/tcp/2/p2p/16Uiu2B",
+        )
+        out = resolve_bootstrap_nodes()
+        assert out == ["/dns4/a/tcp/1/p2p/16Uiu2A", "/dns4/b/tcp/2/p2p/16Uiu2B"]
+
+    def test_resolve_store_default(self, monkeypatch):
+        monkeypatch.delenv(ENV_WAKU_STORE_NODE, raising=False)
+        assert resolve_store_node() == DEFAULT_STORE_NODES[0]
+
+    def test_resolve_store_env_override(self, monkeypatch):
+        monkeypatch.setenv(ENV_WAKU_STORE_NODE, "/dns4/mystore/tcp/3/p2p/16Uiu2Store")
+        assert resolve_store_node() == "/dns4/mystore/tcp/3/p2p/16Uiu2Store"
+
+    def test_build_args_default_unchanged(self):
+        """默认 (无 dns/own-store) args 应含 --store=false 且无 dns-discovery."""
+        from pathlib import Path as _P
+        t = WakuTransport("alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess")
+        args = t._build_nwaku_args(_P("/usr/bin/nwaku"))
+        assert "--store=false" in args
+        assert not any(a.startswith("--dns-discovery") for a in args)
+        # 默认 bootstrap = status.im fleet 前 4 个
+        bn_args = [a for a in args if a.startswith("--discv5-bootstrap-node=")]
+        assert len(bn_args) == len(DEFAULT_BOOTSTRAP[:4])
+
+    def test_build_args_dns_discovery_when_url_set(self):
+        url = "enrtree://AOGECG@waku.example.org"
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            dns_discovery_url=url,
+        )
+        args = t._build_nwaku_args(__import__("pathlib").Path("/usr/bin/nwaku"))
+        assert "--dns-discovery=true" in args
+        assert f"--dns-discovery-url={url}" in args
+
+    def test_build_args_run_own_store(self):
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            run_own_store=True,
+        )
+        args = t._build_nwaku_args(__import__("pathlib").Path("/usr/bin/nwaku"))
+        assert "--store=true" in args
+        assert "--store=false" not in args
+
+    def test_env_dns_and_own_store_picked_up(self, monkeypatch):
+        monkeypatch.setenv(ENV_WAKU_DNS_DISCOVERY_URL, "enrtree://ENVTREE@x.org")
+        monkeypatch.setenv(ENV_WAKU_RUN_OWN_STORE, "1")
+        t = WakuTransport("alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess")
+        args = t._build_nwaku_args(__import__("pathlib").Path("/usr/bin/nwaku"))
+        assert "--dns-discovery=true" in args
+        assert "--dns-discovery-url=enrtree://ENVTREE@x.org" in args
+        assert "--store=true" in args
+
+    def test_custom_bootstrap_via_constructor(self):
+        custom = ["/dns4/myfleet/tcp/9/p2p/16Uiu2Mine"]
+        t = WakuTransport(
+            "alice", my_did=SAMPLE_DID_ALICE, mode="nwaku-subprocess",
+            bootstrap_nodes=custom,
+        )
+        assert t._bootstrap_nodes == custom
+        args = t._build_nwaku_args(__import__("pathlib").Path("/usr/bin/nwaku"))
+        assert "--discv5-bootstrap-node=/dns4/myfleet/tcp/9/p2p/16Uiu2Mine" in args
 
 
 class TestSelectTransportWithWaku:

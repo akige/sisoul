@@ -12,8 +12,8 @@ DHT 自动发现 peer, 完全去 SaaS 化.
 
 1. **PATH 现有**: `which ipfs` 命中 → 直接用 (用户已 `brew install ipfs` / `apt install kubo`).
 2. **brew 自检**: macOS 上 `brew install ipfs` (用户预批 才装).
-3. **静态二进制**: 从 https://dist.ipfs.tech/kubo/<ver>/ 下 .tar.gz (sigstore signed),
-   sha256 校验后解到 `~/.sisoul/bin/ipfs`.
+3. **静态二进制**: 从 https://dist.ipfs.tech/kubo/<ver>/ 下 .tar.gz, 用官方 .sha512
+   校验完整性后解到 `~/.sisoul/bin/ipfs` (#9: 校验失败拒绝安装).
 4. **external-daemon**: 用户已自跑 `ipfs daemon`, 配 `external_daemon_url=http://localhost:5001`,
    不 fork subprocess, 仅 HTTP 调.
 5. **mock**: 全无 → CID = `mockcid-<sha>`, 跟 skill_ipfs.py 现有 mock 一致, dev/test 兜底.
@@ -166,12 +166,18 @@ class IPFSRepoCorrupt(IPFSError):
 
 
 class IPFSCloudRefused(IPFSError):
-    """拒在 cloud / aws-* 主机 spawn 内嵌 kubo (用户红线 §10.3).
+    """拒在 cloud 主机 spawn 内嵌 kubo (用户红线 §10.3).
 
-    GossipSub/kubo 只允许跑在 mac/wsl/win 用户自己的机器上。
+    GossipSub/kubo 只允许跑在用户自己的机器上。
     """
 
     code = 6006
+
+
+class IPFSChecksumError(IPFSError):
+    """下载的 kubo 静态二进制 sha512 与官方 .sha512 不符 (#9, 防供应链/中间人篡改)."""
+
+    code = 6007
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -316,12 +322,82 @@ def kubo_static_download_url(version: str = KUBO_DEFAULT_VERSION) -> str:
     return f"{KUBO_DIST_BASE}/v{version}/kubo_v{version}_{os_tag}-{arch}.{ext}"
 
 
+def kubo_sha512_url(version: str = KUBO_DEFAULT_VERSION) -> str:
+    """官方 .sha512 校验文件 URL (= tarball URL + ".sha512", #9).
+
+    dist.ipfs.tech 为每个 release artifact 发布同名 ``.sha512`` (内容格式:
+    ``<128-hex>  <filename>``).
+    """
+    return kubo_static_download_url(version) + ".sha512"
+
+
+def _parse_sha512_file(text: str) -> Optional[str]:
+    """解析官方 .sha512 文件首个 token = 128-hex 摘要. 解不出返 None."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        token = line.split()[0].lower()
+        if len(token) == 128 and all(c in "0123456789abcdef" for c in token):
+            return token
+    return None
+
+
+def verify_kubo_sha512(
+    data: bytes,
+    version: str = KUBO_DEFAULT_VERSION,
+    *,
+    timeout_sec: float = 30.0,
+    expected: Optional[str] = None,
+) -> str:
+    """下载官方 .sha512 并比对 ``data`` 的 sha512 (#9).
+
+    Args:
+        data: 已下载的 tarball 字节.
+        version: kubo 版本 (定位 .sha512 URL).
+        expected: 直接给定期望摘要 (测试用; 给了就不去网络拉 .sha512).
+
+    Returns:
+        实际算出的 sha512 hex (== 期望值).
+
+    Raises:
+        IPFSChecksumError: 拉不到 .sha512 / 解析失败 / 摘要不符.
+    """
+    actual = hashlib.sha512(data).hexdigest()
+    want = expected
+    if want is None:
+        sha_url = kubo_sha512_url(version)
+        try:
+            with httpx.Client(timeout=timeout_sec, follow_redirects=True) as client:
+                resp = client.get(sha_url)
+                resp.raise_for_status()
+                sha_text = resp.text
+        except httpx.HTTPError as e:
+            raise IPFSChecksumError(
+                f"kubo .sha512 校验文件拉取失败 ({sha_url}): {e}. "
+                "无法验证完整性, 拒绝安装 (防供应链篡改)."
+            ) from e
+        want = _parse_sha512_file(sha_text)
+        if not want:
+            raise IPFSChecksumError(
+                f"kubo .sha512 文件解析不出摘要 ({sha_url}): {sha_text[:80]!r}"
+            )
+    want = want.lower()
+    if actual != want:
+        raise IPFSChecksumError(
+            f"kubo 二进制 sha512 不符! 期望 {want[:16]}…, 实际 {actual[:16]}…. "
+            "下载可能被篡改或损坏, 已拒绝安装."
+        )
+    return actual
+
+
 def install_kubo_static(
     version: str = KUBO_DEFAULT_VERSION,
     target_path: Optional[Path] = None,
     *,
     timeout_sec: float = 120.0,
     dry_run: bool = False,
+    verify: bool = True,
 ) -> Path:
     """从 dist.ipfs.tech 下静态二进制装到 ~/.sisoul/bin/ipfs.
 
@@ -330,12 +406,14 @@ def install_kubo_static(
         target_path: 装到哪 (默认 DEFAULT_BIN_PATH).
         timeout_sec: 下载超时.
         dry_run: 不真下, 仅返目标 URL + path (test 用).
+        verify: 下完用官方 .sha512 校验完整性 (#9, 默认开; 不符则 raise 不落盘).
 
     Returns:
         装好的 binary 路径.
 
     Raises:
         IPFSKuboNotFound: 下载失败 / 平台不支持.
+        IPFSChecksumError: verify=True 且 sha512 与官方不符.
     """
     target = Path(target_path or DEFAULT_BIN_PATH).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -355,6 +433,11 @@ def install_kubo_static(
             data = resp.content
     except httpx.HTTPError as e:
         raise IPFSKuboNotFound(f"kubo 静态下载失败 ({url}): {e}") from e
+
+    # #9: 落盘/解压前先用官方 .sha512 校验完整性 (防中间人/CDN 篡改).
+    if verify:
+        digest = verify_kubo_sha512(data, version, timeout_sec=timeout_sec)
+        logger.info("kubo tarball sha512 校验通过: %s…", digest[:16])
 
     # 解 tar.gz → kubo/ipfs binary
     try:
@@ -1158,6 +1241,7 @@ __all__ = [
     "IPFSPinFailed",
     "IPFSRepoCorrupt",
     "IPFSCloudRefused",
+    "IPFSChecksumError",
     # 数据
     "IPFSStatus",
     "IPFSAddResult",
@@ -1170,6 +1254,8 @@ __all__ = [
     "detect_kubo_version",
     "install_kubo_static",
     "kubo_static_download_url",
+    "kubo_sha512_url",
+    "verify_kubo_sha512",
     # 单例
     "get_default_node",
     "reset_default_node",

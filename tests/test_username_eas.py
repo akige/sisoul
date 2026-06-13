@@ -145,3 +145,101 @@ def test_discover_dedups_by_username(monkeypatch):
     got = ue.discover(network="optimism-mainnet")
     assert len(got) == 1 and got[0]["username"] == "alice"
     assert got[0]["did_key"] == "did:key:zA"  # most recent kept (desc order)
+
+
+# ── #12: helios trustless chain_id 校验接上 ───────────────────────────────────
+
+
+class _FakeChainStatus:
+    def __init__(self, in_sync=True, mode="helios"):
+        self.in_sync = in_sync
+        self.mode = mode
+
+
+class _FakeHelios:
+    def __init__(self, status, chain_id_hex="0xa"):
+        self._status = status
+        self._chain_id_hex = chain_id_hex
+        self.calls = []
+
+    def status(self, chain):
+        return self._status
+
+    def call_sync(self, chain, method, params, **kw):
+        self.calls.append((chain, method))
+        if method == "eth_chainId":
+            return self._chain_id_hex
+        raise AssertionError(method)
+
+
+def test_helios_chain_id_disabled_returns_none(monkeypatch):
+    monkeypatch.setenv("SISOUL_HELIOS_DISABLE", "1")
+    assert ue._helios_chain_id("optimism-mainnet") is None
+
+
+def test_helios_chain_id_unsupported_chain_returns_none(monkeypatch):
+    monkeypatch.delenv("SISOUL_HELIOS_DISABLE", raising=False)
+    # op-sepolia maps to "" (helios 0.11.1 不原生支持) → None (走公共 RPC)
+    assert ue._helios_chain_id("optimism-sepolia") is None
+
+
+def test_helios_chain_id_trustless_when_in_sync(monkeypatch):
+    monkeypatch.delenv("SISOUL_HELIOS_DISABLE", raising=False)
+    fake = _FakeHelios(_FakeChainStatus(in_sync=True, mode="helios"), chain_id_hex="0xa")
+    import sisoul.rpc.helios_client as hc
+    monkeypatch.setattr(hc, "get_default_client", lambda: fake)
+    cid = ue._helios_chain_id("optimism-mainnet")  # op-mainnet → 10 == 0xa
+    assert cid == 10
+    assert ("op-mainnet", "eth_chainId") in fake.calls
+
+
+def test_helios_chain_id_not_in_sync_returns_none(monkeypatch):
+    monkeypatch.delenv("SISOUL_HELIOS_DISABLE", raising=False)
+    fake = _FakeHelios(_FakeChainStatus(in_sync=False, mode="helios"))
+    import sisoul.rpc.helios_client as hc
+    monkeypatch.setattr(hc, "get_default_client", lambda: fake)
+    assert ue._helios_chain_id("optimism-mainnet") is None
+
+
+def test_helios_chain_id_no_client_returns_none(monkeypatch):
+    monkeypatch.delenv("SISOUL_HELIOS_DISABLE", raising=False)
+    import sisoul.rpc.helios_client as hc
+    monkeypatch.setattr(hc, "get_default_client", lambda: None)
+    assert ue._helios_chain_id("optimism-mainnet") is None
+
+
+class _FakeW3Eth:
+    def __init__(self, chain_id):
+        self.chain_id = chain_id
+
+
+class _FakeW3:
+    def __init__(self, chain_id):
+        self.eth = _FakeW3Eth(chain_id)
+
+
+def test_verify_chain_id_trustless_path(monkeypatch):
+    """helios 给出正确 chain_id → mode=trustless, 不碰公共 RPC."""
+    chain = ue.resolve_chain("optimism-mainnet")
+    monkeypatch.setattr(ue, "_helios_chain_id", lambda network: 10)
+    # w3 故意给错 (如果被用就会 mismatch); helios 优先 → 应忽略 w3
+    cid, mode = ue._verify_chain_id(_FakeW3(999), chain)
+    assert cid == 10
+    assert mode == "trustless"
+
+
+def test_verify_chain_id_trusted_fallback(monkeypatch):
+    """helios 不可用 → 退公共 RPC (w3.eth.chain_id), mode=trusted."""
+    chain = ue.resolve_chain("optimism-sepolia")
+    monkeypatch.setattr(ue, "_helios_chain_id", lambda network: None)
+    cid, mode = ue._verify_chain_id(_FakeW3(ue.OPTIMISM_SEPOLIA_CHAIN_ID), chain)
+    assert cid == ue.OPTIMISM_SEPOLIA_CHAIN_ID
+    assert mode == "trusted"
+
+
+def test_verify_chain_id_mismatch_raises(monkeypatch):
+    """RPC/helios 报错的链 → UsernameEASError (防发错链)."""
+    chain = ue.resolve_chain("optimism-sepolia")
+    monkeypatch.setattr(ue, "_helios_chain_id", lambda network: None)
+    with pytest.raises(ue.UsernameEASError, match="chain_id"):
+        ue._verify_chain_id(_FakeW3(999999), chain)

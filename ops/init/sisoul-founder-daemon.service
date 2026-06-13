@@ -1,13 +1,18 @@
-# systemd service for sisoul founder-agent daemon (Linux: Linux host).
+# systemd service template for the sisoul founder-agent daemon (@founder).
 #
-# Install:
-#   sudo cp ops/init/sisoul-founder-daemon.service /etc/systemd/system/
-#   # edit paths first, then:
+# This is a TEMPLATE: __USER__ / __HOME__ are placeholders. Install with the
+# helper which substitutes them for the current user, or edit by hand:
+#
+#   ops/init/install-founder-daemon.sh
+#
+# Or manually:
+#   sed -e "s|__USER__|$USER|g" -e "s|__HOME__|$HOME|g" \
+#       ops/init/sisoul-founder-daemon.service | sudo tee \
+#       /etc/systemd/system/sisoul-founder-daemon.service
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now sisoul-founder-daemon
 #
-# Edit User, WorkingDirectory, ExecStart, SISOUL_VAULT, optional SISOUL_NEWAPI_API_KEY
-# to your values before enabling.
+# Optionally set SISOUL_NEWAPI_API_KEY / SISOUL_NEWAPI_BASE_URL to enable real LLM.
 
 [Unit]
 Description=sisoul founder-agent daemon (@founder)
@@ -16,13 +21,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=YOUR_USER
-WorkingDirectory=%h/sisoul-dev
-Environment=SISOUL_VAULT=/home/ubuntu/.sisoul-founder
+User=__USER__
+WorkingDirectory=__HOME__/sisoul-dev
+Environment=SISOUL_VAULT=__HOME__/.sisoul-founder
 # Uncomment + fill to enable real LLM:
 # Environment=SISOUL_NEWAPI_API_KEY=YOUR_NEWAPI_VIRTUAL_KEY
 # Environment=SISOUL_NEWAPI_BASE_URL=http://127.0.0.1:4000/v1
-ExecStart=%h/sisoul-dev/.venv/bin/uvicorn sisoul.daemon:app --host 127.0.0.1 --port 9876
+ExecStart=__HOME__/sisoul-dev/.venv/bin/uvicorn sisoul.daemon:app --host 127.0.0.1 --port 9876
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:/var/log/sisoul-founder-daemon.log
@@ -36,7 +41,7 @@ TasksMax=128
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/ubuntu/.sisoul-founder /var/log
+ReadWritePaths=__HOME__/.sisoul-founder /var/log
 
 [Install]
 WantedBy=multi-user.target

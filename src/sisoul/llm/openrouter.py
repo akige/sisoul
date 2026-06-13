@@ -14,19 +14,22 @@ api_key: 优先 __init__ 传入, 其次读 OPENROUTER_API_KEY env.
 - mistralai/mistral-7b-instruct (免费)
 
 site_url / app_title 参数可传 HTTP-Referer + X-Title header (OpenRouter analytics, 可选).
+
+#6 dedup: chat / chat_stream 在 OpenAISDKCompatAdapter 基类 (与 OpenAI 共享),
+本类只留 provider-specific 的 _get_client (base_url + analytics headers).
 """
 
 from __future__ import annotations
 
 import os
-from typing import Iterator
 
-from sisoul.llm.base import LLMAdapter, LLMAdapterError
+from sisoul.llm._openai_compat_base import OpenAISDKCompatAdapter
+from sisoul.llm.base import LLMAdapterError
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
-class OpenRouterAdapter(LLMAdapter):
+class OpenRouterAdapter(OpenAISDKCompatAdapter):
     """OpenRouter adapter (复用 openai SDK, 改 base_url).
 
     OpenRouter 提供统一 API 代理: Claude / GPT / Gemini / Llama 等.
@@ -43,6 +46,8 @@ class OpenRouterAdapter(LLMAdapter):
         response = adapter.chat([{"role": "user", "content": "hello"}])
     """
 
+    PROVIDER = "openrouter"
+    PROVIDER_LABEL = "OpenRouter"
     DEFAULT_MODEL = "openai/gpt-4o"
 
     def __init__(
@@ -85,67 +90,3 @@ class OpenRouterAdapter(LLMAdapter):
                 },
             )
         return self._client
-
-    def chat(self, messages: list[dict], **kwargs) -> str:
-        """同步 chat via OpenRouter.
-
-        Args:
-            messages: list[{"role": ..., "content": ...}]
-            **kwargs:
-                max_tokens (int)
-                temperature (float)
-
-        Returns:
-            assistant 回复字符串
-
-        Raises:
-            LLMAdapterError: OpenRouter API 错误 / key 无效
-        """
-        client = self._get_client()
-
-        create_kwargs: dict = dict(model=self.model, messages=messages)
-        if "max_tokens" in kwargs:
-            create_kwargs["max_tokens"] = kwargs["max_tokens"]
-        if "temperature" in kwargs:
-            create_kwargs["temperature"] = kwargs["temperature"]
-
-        try:
-            response = client.chat.completions.create(**create_kwargs)
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            raise LLMAdapterError(
-                f"OpenRouter API error: {e}",
-                provider="openrouter",
-                cause=e,
-            ) from e
-
-    def chat_stream(self, messages: list[dict], **kwargs) -> Iterator[str]:
-        """流式 chat via OpenRouter. yield delta text chunks.
-
-        Args:
-            messages: 同 chat()
-            **kwargs: max_tokens / temperature
-
-        Yields:
-            str delta chunks
-        """
-        client = self._get_client()
-
-        create_kwargs: dict = dict(model=self.model, messages=messages, stream=True)
-        if "max_tokens" in kwargs:
-            create_kwargs["max_tokens"] = kwargs["max_tokens"]
-        if "temperature" in kwargs:
-            create_kwargs["temperature"] = kwargs["temperature"]
-
-        try:
-            stream = client.chat.completions.create(**create_kwargs)
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
-        except Exception as e:
-            raise LLMAdapterError(
-                f"OpenRouter stream error: {e}",
-                provider="openrouter",
-                cause=e,
-            ) from e

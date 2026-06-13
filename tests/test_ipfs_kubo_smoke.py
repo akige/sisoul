@@ -512,6 +512,108 @@ def test_12_install_kubo_static_dry_run(tmp_path: Path):
     assert not target.exists()
 
 
+# ── 12b. #9 sha512 校验 ─────────────────────────────────────────────────────
+
+
+def _make_kubo_tarball(binary_bytes: bytes = b"#!/bin/sh\necho fake-kubo\n") -> bytes:
+    """造一个含 kubo/ipfs 的 .tar.gz 字节 (复用于 sha512 校验测试)."""
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        info = tarfile.TarInfo(name="kubo/ipfs")
+        info.size = len(binary_bytes)
+        info.mode = 0o755
+        tf.addfile(info, io.BytesIO(binary_bytes))
+    return buf.getvalue()
+
+
+def test_12b_kubo_sha512_url():
+    from sisoul.p2p.ipfs_kubo import kubo_sha512_url, kubo_static_download_url
+
+    assert kubo_sha512_url("0.30.0") == kubo_static_download_url("0.30.0") + ".sha512"
+    assert kubo_sha512_url("0.30.0").endswith(".tar.gz.sha512") or kubo_sha512_url(
+        "0.30.0"
+    ).endswith(".zip.sha512")
+
+
+def test_12c_verify_kubo_sha512_match_explicit():
+    """data 的 sha512 == 期望 → 返回实际摘要, 不抛."""
+    import hashlib
+
+    from sisoul.p2p.ipfs_kubo import verify_kubo_sha512
+
+    data = _make_kubo_tarball()
+    digest = hashlib.sha512(data).hexdigest()
+    out = verify_kubo_sha512(data, expected=digest)
+    assert out == digest
+
+
+def test_12d_verify_kubo_sha512_mismatch_raises():
+    """data 的 sha512 != 期望 → IPFSChecksumError."""
+    from sisoul.p2p.ipfs_kubo import IPFSChecksumError, verify_kubo_sha512
+
+    data = _make_kubo_tarball()
+    with pytest.raises(IPFSChecksumError, match="sha512 不符"):
+        verify_kubo_sha512(data, expected="00" * 64)  # 128-hex 但错的
+
+
+def test_12e_install_kubo_static_verify_pass(tmp_path: Path):
+    """install 下完 verify=True, sha512 匹配官方 .sha512 → 装成功."""
+    import hashlib
+    from unittest.mock import MagicMock, patch
+
+    from sisoul.p2p.ipfs_kubo import install_kubo_static
+
+    tarball = _make_kubo_tarball(b"#!/bin/sh\necho good\n")
+    digest = hashlib.sha512(tarball).hexdigest()
+    sha_text = f"{digest}  kubo_v0.30.0_linux-amd64.tar.gz\n"
+
+    def fake_get(url, *a, **kw):
+        if url.endswith(".sha512"):
+            return MagicMock(text=sha_text, raise_for_status=lambda: None)
+        return MagicMock(content=tarball, raise_for_status=lambda: None)
+
+    target = tmp_path / "ipfs"
+    fake_client = MagicMock()
+    fake_client.__enter__ = lambda s: s
+    fake_client.__exit__ = lambda *a: False
+    fake_client.get = fake_get
+    with patch("httpx.Client", return_value=fake_client):
+        out = install_kubo_static(version="0.30.0", target_path=target, verify=True)
+    assert out == target
+    assert target.exists()
+    assert target.read_bytes() == b"#!/bin/sh\necho good\n"
+
+
+def test_12f_install_kubo_static_verify_fail_no_write(tmp_path: Path):
+    """官方 .sha512 与下载 tarball 不符 → IPFSChecksumError 且不落盘."""
+    from unittest.mock import MagicMock, patch
+
+    from sisoul.p2p.ipfs_kubo import IPFSChecksumError, install_kubo_static
+
+    tarball = _make_kubo_tarball(b"tampered-payload")
+    # 官方 .sha512 给一个对不上的摘要 (模拟 CDN/中间人篡改了 tarball)
+    sha_text = f"{'ab' * 64}  kubo_v0.30.0_linux-amd64.tar.gz\n"
+
+    def fake_get(url, *a, **kw):
+        if url.endswith(".sha512"):
+            return MagicMock(text=sha_text, raise_for_status=lambda: None)
+        return MagicMock(content=tarball, raise_for_status=lambda: None)
+
+    target = tmp_path / "ipfs"
+    fake_client = MagicMock()
+    fake_client.__enter__ = lambda s: s
+    fake_client.__exit__ = lambda *a: False
+    fake_client.get = fake_get
+    with patch("httpx.Client", return_value=fake_client):
+        with pytest.raises(IPFSChecksumError):
+            install_kubo_static(version="0.30.0", target_path=target, verify=True)
+    # 校验失败 → 二进制不应落盘
+    assert not target.exists()
+
+
 # ── 13. 真 DHT discover smoke (跳过 if no real kubo) ──────────────────────
 
 

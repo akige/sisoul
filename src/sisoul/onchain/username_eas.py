@@ -55,6 +55,15 @@ OPTIMISM_SEPOLIA_EASSCAN = "https://optimism-sepolia.easscan.org/graphql"
 
 ALLOW_MAINNET_ENV = "EAS_ALLOW_MAINNET"
 
+# #12: username_eas network → sisoul.rpc.HeliosClient 原生 chain key.
+# helios 0.11.1 原生支持 op-mainnet (trustless Merkle proof); 但 NOT op-sepolia,
+# 故 sepolia map "" → 直走公共 RPC (trusted). 跟 onchain/eas.py 同模式.
+# SISOUL_HELIOS_DISABLE=1 可强制 legacy 公共 RPC (回归/调试).
+_USERNAME_NETWORK_TO_HELIOS_CHAIN: dict[str, str] = {
+    "optimism-mainnet": "op-mainnet",
+    "optimism-sepolia": "",
+}
+
 
 @dataclass(frozen=True)
 class Chain:
@@ -179,6 +188,62 @@ def _mainnet_gate(chain: Chain, allow_mainnet: bool) -> None:
         )
 
 
+def _helios_chain_id(network: str) -> Optional[int]:
+    """#12: 若 helios light client 在跑且原生支持该链, 用它 trustless 取 chain_id.
+
+    返回 trustless 验证过的 chain_id, 或 None (helios 不可用 / 该链不原生支持 /
+    未 in_sync / 调用失败 → 调用方退到公共 RPC). 不抛 — 纯 best-effort 升级.
+    """
+    if os.environ.get("SISOUL_HELIOS_DISABLE") == "1":
+        return None
+    helios_chain = _USERNAME_NETWORK_TO_HELIOS_CHAIN.get(network, "")
+    if not helios_chain:
+        return None
+    try:
+        from sisoul.rpc.helios_client import get_default_client
+    except ImportError:
+        return None
+    client = get_default_client()
+    if client is None:
+        return None
+    try:
+        s = client.status(helios_chain)
+        if isinstance(s, dict):  # full status() 返 dict
+            s = s.get(helios_chain)
+        if not (s and s.in_sync and s.mode == "helios"):
+            return None
+        hex_id = client.call_sync(helios_chain, "eth_chainId", [])
+        return int(hex_id, 16)
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "helios eth_chainId(%s) 失败 (%s), fallback 公共 RPC", helios_chain, e
+        )
+        return None
+
+
+def _verify_chain_id(w3: Any, chain: Chain) -> tuple[int, str]:
+    """验证连的 RPC 确实是目标链 (#12: helios trustless 优先, 否则公共 RPC).
+
+    Returns:
+        (chain_id, mode) — mode ∈ {"trustless", "trusted"}.
+
+    Raises:
+        UsernameEASError: chain_id 与目标链不符 (防把真钱发错链 / RPC 撒谎).
+    """
+    onchain_id = _helios_chain_id(chain.network)
+    mode = "trustless"
+    if onchain_id is None:
+        onchain_id = w3.eth.chain_id  # fallback: 信任 untrusted 公共 RPC
+        mode = "trusted"
+    if onchain_id != chain.chain_id:
+        raise UsernameEASError(
+            f"RPC chain_id={onchain_id} 与 {chain.network}(期望 {chain.chain_id}) 不符 "
+            f"(mode={mode})"
+        )
+    return onchain_id, mode
+
+
 # ── register a username (build always; send only on live, gated) ──────────────
 
 # minimal EAS ABI (just attest()).
@@ -282,11 +347,9 @@ def register_username(
     w3 = Web3(Web3.HTTPProvider(rpc_url or chain.rpc_url))
     if not w3.is_connected():
         raise UsernameEASError(f"RPC 连不上: {rpc_url or chain.rpc_url}")
-    onchain_id = w3.eth.chain_id
-    if onchain_id != chain.chain_id:
-        raise UsernameEASError(
-            f"RPC chain_id={onchain_id} 与 {chain.network}(期望 {chain.chain_id}) 不符"
-        )
+    # #12: 发真钱前先校验链身份 — helios light client 在跑则 trustless 验 chain_id,
+    # 否则退到公共 RPC (trusted). 不符直接 raise (防把 gas 花在错链).
+    _verify_chain_id(w3, chain)
 
     # ── ensure schema registered on this chain (one-time per chain) ────────
     # EAS schema UIDs are deterministic across chains (keccak256 of schema +
@@ -487,4 +550,6 @@ __all__ = [
     "register_username",
     "resolve_username",
     "discover",
+    "_verify_chain_id",
+    "_helios_chain_id",
 ]

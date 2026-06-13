@@ -92,9 +92,56 @@ DEFAULT_STORE_NODES: tuple[str, ...] = (
     "/dns4/node-02.do-ams3.waku.sandbox.status.im/tcp/30303/p2p/16Uiu2HAmRSxJZxJ9HG7TtVrSMBhJqcjyDfL2sUbCqXmTwAaXM1KZ",
 )
 
+# #4 去中心化: 把"全押 status.im sandbox fleet"这个最大单点改成可配置.
+# 默认行为不变 (上面 DEFAULT_BOOTSTRAP / DEFAULT_STORE_NODES 仍是 fallback),
+# 但用户可经 env/config 换 fleet / 加 ENR DNS discovery / 自跑 store node.
+#
+# env 开关 (全部可选, 不设则维持现状):
+#   SISOUL_WAKU_BOOTSTRAP   逗号分隔 multiaddr 列表, 覆盖 DEFAULT_BOOTSTRAP
+#   SISOUL_WAKU_STORE_NODE  单个 store node multiaddr, 覆盖 DEFAULT_STORE_NODES[0]
+#   SISOUL_WAKU_DNS_DISCOVERY_URL  nwaku ENR tree URL (enrtree://...); 设了则启 DNS discovery
+#   SISOUL_WAKU_RUN_OWN_STORE=1    本节点自跑 store (--store=true), 不再依赖公共 store
+ENV_WAKU_BOOTSTRAP = "SISOUL_WAKU_BOOTSTRAP"
+ENV_WAKU_STORE_NODE = "SISOUL_WAKU_STORE_NODE"
+ENV_WAKU_DNS_DISCOVERY_URL = "SISOUL_WAKU_DNS_DISCOVERY_URL"
+ENV_WAKU_RUN_OWN_STORE = "SISOUL_WAKU_RUN_OWN_STORE"
+
 DEFAULT_PUBSUB_TOPIC = "/waku/2/default-waku/proto"
 SISOUL_CONTENT_TOPIC_PREFIX = "/sisoul"
 SISOUL_CONTENT_TOPIC_VERSION = "v1"
+
+
+def _parse_multiaddr_list(raw: Optional[str]) -> list[str]:
+    """逗号/空白分隔的 multiaddr 字符串 → list (空段丢弃)."""
+    if not raw:
+        return []
+    parts = [p.strip() for p in raw.replace("\n", ",").split(",")]
+    return [p for p in parts if p]
+
+
+def resolve_bootstrap_nodes(
+    explicit: Optional[list[str]] = None,
+) -> list[str]:
+    """决议 bootstrap fleet (#4, 优先级: 显式参数 > env > 内置 status.im 默认).
+
+    默认 (无参数 + 无 env) 返回 DEFAULT_BOOTSTRAP, 行为与改动前完全一致.
+    """
+    if explicit is not None:
+        return list(explicit)
+    env_nodes = _parse_multiaddr_list(os.environ.get(ENV_WAKU_BOOTSTRAP))
+    if env_nodes:
+        return env_nodes
+    return list(DEFAULT_BOOTSTRAP)
+
+
+def resolve_store_node(explicit: Optional[str] = None) -> Optional[str]:
+    """决议 store node (#4, 优先级: 显式参数 > env > 内置默认[0])."""
+    if explicit is not None:
+        return explicit
+    env_store = os.environ.get(ENV_WAKU_STORE_NODE)
+    if env_store and env_store.strip():
+        return env_store.strip()
+    return DEFAULT_STORE_NODES[0] if DEFAULT_STORE_NODES else None
 
 MAX_WAKU_PAYLOAD_BYTES = 1 * 1024 * 1024
 DEFAULT_STORE_TTL_SEC = 24 * 3600
@@ -103,6 +150,12 @@ DEFAULT_SHUTDOWN_GRACE_SEC = 5.0
 DEFAULT_HTTP_TIMEOUT_SEC = 30.0
 DEFAULT_RECV_QUEUE_SIZE = 10000
 DEFAULT_FILTER_LONG_POLL_SEC = 5.0
+
+# nwaku 子进程 watchdog (#5): 子进程只在 start 时 poll 一次, crash 后心跳/推送静默停摆.
+# watchdog 周期性探活, 挂了自动重启 + 重放订阅 (re-subscribe).
+DEFAULT_WATCHDOG_INTERVAL_SEC = 5.0
+DEFAULT_WATCHDOG_MAX_RESTARTS = 10
+DEFAULT_WATCHDOG_RESTART_BACKOFF_SEC = 2.0
 
 
 # ── 异常 ──────────────────────────────────────────────────────────────────────
@@ -202,6 +255,7 @@ class WakuStatus:
     sent_count: int = 0
     recv_count: int = 0
     store_query_count: int = 0
+    restart_count: int = 0  # nwaku 子进程被 watchdog 重启的次数 (#5)
     error: Optional[str] = None
 
 
@@ -376,6 +430,8 @@ class WakuTransport(Transport):
         nwaku_binary: Optional[str] = None,
         bootstrap_nodes: Optional[list[str]] = None,
         store_node: Optional[str] = None,
+        dns_discovery_url: Optional[str] = None,
+        run_own_store: Optional[bool] = None,
         mode: Optional[WakuMode] = None,
         rest_port: int = DEFAULT_REST_PORT,
         p2p_tcp_port: int = DEFAULT_P2P_TCP_PORT,
@@ -384,6 +440,10 @@ class WakuTransport(Transport):
         http_timeout_sec: float = DEFAULT_HTTP_TIMEOUT_SEC,
         store_ttl_sec: float = DEFAULT_STORE_TTL_SEC,
         recv_queue_size: int = DEFAULT_RECV_QUEUE_SIZE,
+        watchdog_enabled: bool = True,
+        watchdog_interval_sec: float = DEFAULT_WATCHDOG_INTERVAL_SEC,
+        watchdog_max_restarts: int = DEFAULT_WATCHDOG_MAX_RESTARTS,
+        watchdog_restart_backoff_sec: float = DEFAULT_WATCHDOG_RESTART_BACKOFF_SEC,
     ) -> None:
         self._label = node_label
         self._my_did = my_did
@@ -391,10 +451,19 @@ class WakuTransport(Transport):
             f"waku:{node_label}:{time.time_ns()}".encode("utf-8")
         ).hexdigest()[:16]
         self._nwaku_bin_override = Path(nwaku_binary).expanduser() if nwaku_binary else None
-        self._bootstrap_nodes = (
-            list(bootstrap_nodes) if bootstrap_nodes is not None else list(DEFAULT_BOOTSTRAP)
+        # #4: fleet 去中心化 — 经 resolve_*(显式 > env > status.im 默认) 决议.
+        # 默认 (无参数/env) 仍是内置 status.im fleet, 现有 P2P 连接不受影响.
+        self._bootstrap_nodes = resolve_bootstrap_nodes(bootstrap_nodes)
+        self._store_node = resolve_store_node(store_node)
+        self._dns_discovery_url = (
+            dns_discovery_url
+            if dns_discovery_url is not None
+            else os.environ.get(ENV_WAKU_DNS_DISCOVERY_URL) or None
         )
-        self._store_node = store_node or (DEFAULT_STORE_NODES[0] if DEFAULT_STORE_NODES else None)
+        if run_own_store is not None:
+            self._run_own_store = run_own_store
+        else:
+            self._run_own_store = os.environ.get(ENV_WAKU_RUN_OWN_STORE) == "1"
         self._mode_override = mode
         self._rest_port = rest_port
         self._p2p_tcp_port = p2p_tcp_port
@@ -403,6 +472,10 @@ class WakuTransport(Transport):
         self._http_timeout = http_timeout_sec
         self._store_ttl_sec = store_ttl_sec
         self._recv_queue_size = recv_queue_size
+        self._watchdog_enabled = watchdog_enabled
+        self._watchdog_interval = watchdog_interval_sec
+        self._watchdog_max_restarts = watchdog_max_restarts
+        self._watchdog_restart_backoff = watchdog_restart_backoff_sec
 
         self._mode: WakuMode = "mock"
         self._peer_id_str: str = ""
@@ -414,6 +487,9 @@ class WakuTransport(Transport):
         self._known_peers: dict[str, str] = {}
         self._filter_tasks: list[asyncio.Task] = []
         self._bus_subs: list[tuple[str, asyncio.Queue]] = []
+        self._watchdog_task: Optional[asyncio.Task] = None
+        self._restart_count = 0
+        self._stopping = False
         self._started = False
         self._sent_count = 0
         self._recv_count = 0
@@ -436,6 +512,11 @@ class WakuTransport(Transport):
         return self._my_did_short
 
     @property
+    def restart_count(self) -> int:
+        """nwaku 子进程被 watchdog 重启的次数 (#5)."""
+        return self._restart_count
+
+    @property
     def rest_url(self) -> str:
         if self._mode == "external-daemon" and self._external_rest_url:
             return self._external_rest_url.rstrip("/")
@@ -454,6 +535,7 @@ class WakuTransport(Transport):
             sent_count=self._sent_count,
             recv_count=self._recv_count,
             store_query_count=self._store_query_count,
+            restart_count=self._restart_count,
         )
 
     def _decide_mode(self) -> WakuMode:
@@ -488,14 +570,20 @@ class WakuTransport(Transport):
             await self._start_mock()
 
         self._started = True
+        # #5: nwaku 子进程起来后挂 watchdog (周期探活 + crash 自重启 + 重放订阅).
+        if self._mode == "nwaku-subprocess" and self._watchdog_enabled:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
         return self._multiaddr_str
 
-    async def _start_nwaku_subprocess(self) -> None:
-        """fork nwaku binary, 等 REST :8645 起."""
-        bin_path = find_nwaku_binary(self._nwaku_bin_override)
-        if bin_path is None:
-            raise WakuBinaryNotFound("nwaku binary 找不到")
+    def _build_nwaku_args(self, bin_path: Path) -> list[str]:
+        """构造 nwaku CLI args (start + watchdog restart 共用).
 
+        #4 去中心化: --store / DNS discovery 由 self._run_own_store /
+        self._dns_discovery_url 决定. 二者默认关 (store=false, 无 dns-discovery),
+        因此默认 args 与改动前逐字一致, 现有连接行为不变.
+        """
+        # 自跑 store node → --store=true (不再单点依赖公共 store fleet).
+        store_flag = "--store=true" if self._run_own_store else "--store=false"
         args = [
             str(bin_path),
             "--rest=true",
@@ -504,7 +592,7 @@ class WakuTransport(Transport):
             "--rest-relay-cache-capacity=100",
             f"--tcp-port={self._p2p_tcp_port}",
             "--relay=true",
-            "--store=false",
+            store_flag,
             "--filter=true",
             "--lightpush=true",
             f"--pubsub-topic={DEFAULT_PUBSUB_TOPIC}",
@@ -513,7 +601,20 @@ class WakuTransport(Transport):
             args.append(f"--discv5-bootstrap-node={bn}")
         if self._store_node:
             args.append(f"--storenode={self._store_node}")
+        # #4: ENR DNS discovery — 设了 enrtree:// URL 才启 (增量, 默认不加).
+        # nwaku 原生支持: 从 ENR tree 动态发现 fleet, 减少对硬编码 bootstrap 的依赖.
+        if self._dns_discovery_url:
+            args.append("--dns-discovery=true")
+            args.append(f"--dns-discovery-url={self._dns_discovery_url}")
+        return args
 
+    async def _spawn_and_wait_nwaku(self) -> None:
+        """fork nwaku binary, 等 REST :8645 起 (start + restart 共用核心)."""
+        bin_path = find_nwaku_binary(self._nwaku_bin_override)
+        if bin_path is None:
+            raise WakuBinaryNotFound("nwaku binary 找不到")
+
+        args = self._build_nwaku_args(bin_path)
         log.debug("启 nwaku: %s", " ".join(args))
         try:
             self._proc = subprocess.Popen(
@@ -525,7 +626,8 @@ class WakuTransport(Transport):
         except (FileNotFoundError, PermissionError) as e:
             raise WakuBinaryNotFound(f"启 nwaku 失败: {e}") from e
 
-        self._http = httpx.AsyncClient(timeout=self._http_timeout)
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=self._http_timeout)
         deadline = time.monotonic() + self._startup_timeout
         last_err: Optional[Exception] = None
         while time.monotonic() < deadline:
@@ -548,6 +650,100 @@ class WakuTransport(Transport):
         raise WakuDaemonStartTimeout(
             f"nwaku REST {self.rest_url} 在 {self._startup_timeout}s 内未起 (last_err={last_err})"
         )
+
+    async def _start_nwaku_subprocess(self) -> None:
+        """fork nwaku binary, 等 REST :8645 起 (首次启动入口)."""
+        await self._spawn_and_wait_nwaku()
+
+    async def _watchdog_loop(self) -> None:
+        """#5: 周期探活 nwaku 子进程, crash 后自动重启 + 重放订阅.
+
+        现状问题: 子进程启动后只 poll 一次 (在 _spawn_and_wait_nwaku), 此后
+        若 nwaku crash, send()/recv()/filter long-poll 全静默停摆, 心跳/推送丢失
+        且无任何告警. watchdog 把"一次性 poll"补成"周期性 poll + 自愈".
+        """
+        log.debug("nwaku watchdog 启动 (interval=%.1fs, max_restarts=%d)",
+                  self._watchdog_interval, self._watchdog_max_restarts)
+        while self._started and not self._stopping:
+            try:
+                await asyncio.sleep(self._watchdog_interval)
+            except asyncio.CancelledError:
+                return
+            if self._stopping or not self._started:
+                return
+            proc = self._proc
+            if proc is None:
+                continue
+            if proc.poll() is None:
+                continue  # 进程还活着
+
+            # 进程已死 → 尝试重启
+            exit_code = proc.returncode
+            if self._restart_count >= self._watchdog_max_restarts:
+                log.error(
+                    "nwaku 子进程已死 (exit=%s) 且重启次数 %d 达上限 %d, 放弃自愈. "
+                    "心跳/推送将停摆, 需人工介入.",
+                    exit_code, self._restart_count, self._watchdog_max_restarts,
+                )
+                return
+            log.warning(
+                "nwaku 子进程死亡 (exit=%s), watchdog 第 %d 次重启...",
+                exit_code, self._restart_count + 1,
+            )
+            try:
+                await self._restart_nwaku()
+                self._restart_count += 1
+                log.info("nwaku 重启成功 (第 %d 次), 已重放 %d 个订阅",
+                         self._restart_count, len(self._subscribed_topics))
+            except asyncio.CancelledError:
+                return
+            except Exception as e:  # noqa: BLE001
+                self._restart_count += 1
+                log.error("nwaku 重启失败 (第 %d 次): %s", self._restart_count, e)
+                # 退避后继续 (下轮再试, 直到 max_restarts)
+                try:
+                    await asyncio.sleep(self._watchdog_restart_backoff)
+                except asyncio.CancelledError:
+                    return
+
+    async def _restart_nwaku(self) -> None:
+        """重启 nwaku 子进程 + 重放所有订阅 (#5).
+
+        复用同一 REST 端口, 因此现存 filter long-poll 循环 (打同 URL) 在新进程
+        起来后自动恢复; 但 nwaku 侧 filter 订阅随旧进程消失, 必须重新 POST.
+        """
+        # 清掉死进程 (确保 _proc 干净, 不重复 reap)
+        old = self._proc
+        if old is not None and old.poll() is None:
+            await self._kill_proc()
+        else:
+            self._proc = None
+        # 重新 spawn + 等 REST 起 (复用 self._http, 同端口)
+        await self._spawn_and_wait_nwaku()
+        # 重放订阅: 重新 POST filter subscription (long-poll 任务无需重建).
+        await self._resubscribe_all()
+
+    async def _resubscribe_all(self) -> None:
+        """重启后把已知 content topic 重新订阅到新 nwaku 进程 (#5)."""
+        if self._http is None:
+            return
+        for content_topic in list(self._subscribed_topics):
+            sub_body = {
+                "requestId": hashlib.sha256(
+                    f"{content_topic}:{time.time_ns()}".encode()
+                ).hexdigest()[:16],
+                "contentFilters": [content_topic],
+                "pubsubTopic": DEFAULT_PUBSUB_TOPIC,
+            }
+            try:
+                resp = await self._http.post(
+                    f"{self.rest_url}/filter/v2/subscriptions",
+                    json=sub_body,
+                    timeout=self._http_timeout,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as e:
+                log.warning("重启后 re-subscribe %s 失败: %s", content_topic, e)
 
     async def _start_external_daemon(self) -> None:
         """连用户自跑的 nwaku/go-waku."""
@@ -581,6 +777,13 @@ class WakuTransport(Transport):
         if not self._started:
             return
 
+        # #5: 先标记 stopping 并停 watchdog, 防止它在 shutdown 期间误判 crash 而重启.
+        self._stopping = True
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+            await asyncio.gather(self._watchdog_task, return_exceptions=True)
+            self._watchdog_task = None
+
         for t in self._filter_tasks:
             t.cancel()
         if self._filter_tasks:
@@ -603,6 +806,7 @@ class WakuTransport(Transport):
             self._http = None
 
         self._started = False
+        self._stopping = False
 
     async def _kill_proc(self) -> None:
         if self._proc is None:
@@ -1022,6 +1226,12 @@ __all__ = [
     "DEFAULT_REST_PORT",
     "DEFAULT_STORE_NODES",
     "DEFAULT_STORE_TTL_SEC",
+    "DEFAULT_WATCHDOG_INTERVAL_SEC",
+    "DEFAULT_WATCHDOG_MAX_RESTARTS",
+    "ENV_WAKU_BOOTSTRAP",
+    "ENV_WAKU_DNS_DISCOVERY_URL",
+    "ENV_WAKU_RUN_OWN_STORE",
+    "ENV_WAKU_STORE_NODE",
     "LIBP2P_PUBSUB_AVAILABLE",
     "MAX_WAKU_PAYLOAD_BYTES",
     "NWAKU_DEFAULT_VERSION",
@@ -1044,6 +1254,8 @@ __all__ = [
     "find_nwaku_binary",
     "nwaku_static_download_url",
     "parse_content_topic",
+    "resolve_bootstrap_nodes",
+    "resolve_store_node",
     "select_transport_with_waku",
     "topic_matches_peer",
 ]
